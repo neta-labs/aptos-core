@@ -9,8 +9,8 @@
 -  [Struct `EntryFunctionPayload`](#0x1_transaction_context_EntryFunctionPayload)
 -  [Struct `MultisigPayload`](#0x1_transaction_context_MultisigPayload)
 -  [Constants](#@Constants_0)
--  [Function `get_txn_hash`](#0x1_transaction_context_get_txn_hash)
 -  [Function `get_transaction_hash`](#0x1_transaction_context_get_transaction_hash)
+-  [Function `get_txn_hash`](#0x1_transaction_context_get_txn_hash)
 -  [Function `generate_unique_address`](#0x1_transaction_context_generate_unique_address)
 -  [Function `generate_auid_address`](#0x1_transaction_context_generate_auid_address)
 -  [Function `get_script_hash`](#0x1_transaction_context_get_script_hash)
@@ -39,9 +39,11 @@
 -  [Function `multisig_payload_internal`](#0x1_transaction_context_multisig_payload_internal)
 -  [Function `multisig_address`](#0x1_transaction_context_multisig_address)
 -  [Function `inner_entry_function_payload`](#0x1_transaction_context_inner_entry_function_payload)
+-  [Function `raw_transaction_hash`](#0x1_transaction_context_raw_transaction_hash)
+-  [Function `raw_transaction_hash_internal`](#0x1_transaction_context_raw_transaction_hash_internal)
 -  [Specification](#@Specification_1)
-    -  [Function `get_txn_hash`](#@Specification_1_get_txn_hash)
     -  [Function `get_transaction_hash`](#@Specification_1_get_transaction_hash)
+    -  [Function `get_txn_hash`](#@Specification_1_get_txn_hash)
     -  [Function `generate_unique_address`](#@Specification_1_generate_unique_address)
     -  [Function `generate_auid_address`](#@Specification_1_generate_auid_address)
     -  [Function `get_script_hash`](#@Specification_1_get_script_hash)
@@ -206,35 +208,12 @@ Transaction context is only available in the user transaction prologue, executio
 
 
 
-<a id="0x1_transaction_context_get_txn_hash"></a>
-
-## Function `get_txn_hash`
-
-Returns the transaction hash of the current transaction.
-
-
-<pre><code><b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_txn_hash">get_txn_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
-</code></pre>
-
-
-
-<details>
-<summary>Implementation</summary>
-
-
-<pre><code><b>native</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_txn_hash">get_txn_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;;
-</code></pre>
-
-
-
-</details>
-
 <a id="0x1_transaction_context_get_transaction_hash"></a>
 
 ## Function `get_transaction_hash`
 
-Returns the transaction hash of the current transaction.
-Internally calls the private function <code>get_txn_hash</code>.
+Returns the hash of the internal session ID, providing a unique value for each transaction session
+(prologue, execution, epilogue). Note that this is not the raw transaction hash used for authentication.
 This function is created for to feature gate the <code>get_txn_hash</code> function.
 
 
@@ -250,6 +229,28 @@ This function is created for to feature gate the <code>get_txn_hash</code> funct
 <pre><code><b>public</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_transaction_hash">get_transaction_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt; {
     <a href="transaction_context.md#0x1_transaction_context_get_txn_hash">get_txn_hash</a>()
 }
+</code></pre>
+
+
+
+</details>
+
+<a id="0x1_transaction_context_get_txn_hash"></a>
+
+## Function `get_txn_hash`
+
+
+
+<pre><code><b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_txn_hash">get_txn_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
+</code></pre>
+
+
+
+<details>
+<summary>Implementation</summary>
+
+
+<pre><code><b>native</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_txn_hash">get_txn_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;;
 </code></pre>
 
 
@@ -965,9 +966,77 @@ Returns the inner entry function payload of the multisig payload.
 
 </details>
 
+<a id="0x1_transaction_context_raw_transaction_hash"></a>
+
+## Function `raw_transaction_hash`
+
+Returns the hash of the current raw transaction, which is used for transaction authentication.
+This function calls an internal native function to retrieve the raw transaction hash.
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_raw_transaction_hash">raw_transaction_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
+</code></pre>
+
+
+
+<details>
+<summary>Implementation</summary>
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_raw_transaction_hash">raw_transaction_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt; {
+    <a href="transaction_context.md#0x1_transaction_context_raw_transaction_hash_internal">raw_transaction_hash_internal</a>()
+}
+</code></pre>
+
+
+
+</details>
+
+<a id="0x1_transaction_context_raw_transaction_hash_internal"></a>
+
+## Function `raw_transaction_hash_internal`
+
+
+
+<pre><code><b>fun</b> <a href="transaction_context.md#0x1_transaction_context_raw_transaction_hash_internal">raw_transaction_hash_internal</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
+</code></pre>
+
+
+
+<details>
+<summary>Implementation</summary>
+
+
+<pre><code><b>native</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_raw_transaction_hash_internal">raw_transaction_hash_internal</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;;
+</code></pre>
+
+
+
+</details>
+
 <a id="@Specification_1"></a>
 
 ## Specification
+
+
+<a id="@Specification_1_get_transaction_hash"></a>
+
+### Function `get_transaction_hash`
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_transaction_hash">get_transaction_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
+</code></pre>
+
+
+
+
+<pre><code><b>pragma</b> opaque;
+<b>aborts_if</b> [abstract] <b>false</b>;
+<b>ensures</b> result == <a href="transaction_context.md#0x1_transaction_context_spec_get_txn_hash">spec_get_txn_hash</a>();
+// This enforces <a id="high-level-req-1" href="#high-level-req">high-level requirement 1</a>:
+<b>ensures</b> [abstract] len(result) == 32;
+</code></pre>
+
 
 
 <a id="@Specification_1_get_txn_hash"></a>
@@ -993,26 +1062,6 @@ Returns the inner entry function payload of the multisig payload.
 
 
 <pre><code><b>fun</b> <a href="transaction_context.md#0x1_transaction_context_spec_get_txn_hash">spec_get_txn_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;;
-</code></pre>
-
-
-
-<a id="@Specification_1_get_transaction_hash"></a>
-
-### Function `get_transaction_hash`
-
-
-<pre><code><b>public</b> <b>fun</b> <a href="transaction_context.md#0x1_transaction_context_get_transaction_hash">get_transaction_hash</a>(): <a href="../../aptos-stdlib/../move-stdlib/doc/vector.md#0x1_vector">vector</a>&lt;u8&gt;
-</code></pre>
-
-
-
-
-<pre><code><b>pragma</b> opaque;
-<b>aborts_if</b> [abstract] <b>false</b>;
-<b>ensures</b> result == <a href="transaction_context.md#0x1_transaction_context_spec_get_txn_hash">spec_get_txn_hash</a>();
-// This enforces <a id="high-level-req-1" href="#high-level-req">high-level requirement 1</a>:
-<b>ensures</b> [abstract] len(result) == 32;
 </code></pre>
 
 
