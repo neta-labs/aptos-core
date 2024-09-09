@@ -789,6 +789,7 @@ name = "aptos-comparison-testing"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aptos-block-executor",
  "aptos-framework",
  "aptos-language-e2e-tests",
  "aptos-rest-client",
@@ -1399,6 +1400,7 @@ name = "aptos-executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aptos-block-executor",
  "aptos-cached-packages",
  "aptos-config",
  "aptos-consensus-types",
@@ -1488,6 +1490,7 @@ dependencies = [
 name = "aptos-executor-service"
 version = "0.1.0"
 dependencies = [
+ "aptos-block-executor",
  "aptos-block-partitioner",
  "aptos-config",
  "aptos-infallible",
@@ -1593,6 +1596,7 @@ name = "aptos-experimental-ptx-executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aptos-block-executor",
  "aptos-executor",
  "aptos-experimental-runtimes",
  "aptos-infallible",
@@ -4241,6 +4245,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aptos-api-types",
+ "aptos-block-executor",
  "aptos-cached-packages",
  "aptos-crypto",
  "aptos-framework",
@@ -4511,6 +4516,7 @@ name = "aptos-vm-profiling"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aptos-block-executor",
  "aptos-cached-packages",
  "aptos-gas-schedule",
  "aptos-language-e2e-tests",
