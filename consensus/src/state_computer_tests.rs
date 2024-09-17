@@ -55,6 +55,10 @@ impl ConsensusNotificationSender for DummyStateSyncNotifier {
         Ok(())
     }
 
+    async fn sync_for_duration(&self) -> Result<(), Error> {
+        unreachable!()
+    }
+
     async fn sync_to_target(&self, _target: LedgerInfoWithSignatures) -> Result<(), Error> {
         unreachable!()
     }

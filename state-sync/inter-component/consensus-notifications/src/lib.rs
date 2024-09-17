@@ -44,6 +44,9 @@ pub trait ConsensusNotificationSender: Send + Sync {
     ) -> Result<(), Error>;
 
     /// Notify state sync to synchronize storage to the specified target.
+    async fn sync_for_duration(&self) -> Result<(), Error>;
+
+    /// Notify state sync to synchronize storage to the specified target.
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), Error>;
 }
 
@@ -129,6 +132,10 @@ impl ConsensusNotificationSender for ConsensusNotifier {
         } else {
             Err(Error::TimeoutWaitingForStateSync)
         }
+    }
+
+    async fn sync_for_duration(&self) -> Result<(), Error> {
+        unimplemented!()
     }
 
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), Error> {
