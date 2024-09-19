@@ -432,6 +432,7 @@ async fn test_commit_sync_race() {
         on_chain_config::{TransactionDeduperType, TransactionShufflerType},
         transaction::{SignedTransaction, TransactionStatus},
     };
+    use std::time::Duration;
 
     struct RecordedCommit {
         time: Mutex<LogicalTime>,
@@ -513,6 +514,10 @@ async fn test_commit_sync_race() {
             _transactions: Vec<Transaction>,
             _subscribable_events: Vec<ContractEvent>,
         ) -> std::result::Result<(), Error> {
+            Ok(())
+        }
+
+        async fn sync_for_duration(&self, _duration: Duration) -> std::result::Result<(), Error> {
             Ok(())
         }
 

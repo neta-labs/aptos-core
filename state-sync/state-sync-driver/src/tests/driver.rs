@@ -48,9 +48,15 @@ async fn test_auto_bootstrapping() {
     let (validator_driver, _, consensus_notifier, _, _, _, _, time_service) =
         create_validator_driver(None).await;
 
-    // Verify auto-bootstrapping hasn't happened yet
+    // Verify auto-bootstrapping hasn't happened yet (the sync target notification fails)
     let result = consensus_notifier
         .sync_to_target(create_ledger_info_at_version(0))
+        .await;
+    assert_err!(result);
+
+    // Verify auto-bootstrapping hasn't happened yet (the sync duration notification fails)
+    let result = consensus_notifier
+        .sync_for_duration(Duration::from_secs(1))
         .await;
     assert_err!(result);
 
@@ -255,9 +261,15 @@ async fn test_consensus_sync_request() {
     let (_full_node_driver, _, consensus_notifier, _, _, _, _, _) =
         create_full_node_driver(None).await;
 
-    // Verify that full nodes can't process sync requests
+    // Verify that full nodes can't process sync target requests
     let result = consensus_notifier
         .sync_to_target(create_ledger_info_at_version(0))
+        .await;
+    assert_err!(result);
+
+    // Verify that full nodes can't process sync duration requests
+    let result = consensus_notifier
+        .sync_for_duration(Duration::from_secs(1))
         .await;
     assert_err!(result);
 
@@ -265,9 +277,15 @@ async fn test_consensus_sync_request() {
     let (_validator_driver, _, consensus_notifier, _, _, _, _, _) =
         create_validator_driver(None).await;
 
-    // Send a new sync request and verify the node isn't bootstrapped
+    // Send a new sync target request and verify the node isn't bootstrapped
     let result = consensus_notifier
         .sync_to_target(create_ledger_info_at_version(0))
+        .await;
+    assert_err!(result);
+
+    // Send a new sync duration request and verify the node isn't bootstrapped
+    let result = consensus_notifier
+        .sync_for_duration(Duration::from_secs(1))
         .await;
     assert_err!(result);
 }

@@ -22,7 +22,8 @@ use crate::{
 };
 use aptos_config::config::{ConsensusObserverConfig, RoleType, StateSyncDriverConfig};
 use aptos_consensus_notifications::{
-    ConsensusCommitNotification, ConsensusNotification, ConsensusSyncNotification,
+    ConsensusCommitNotification, ConsensusNotification, ConsensusSyncDurationNotification,
+    ConsensusSyncTargetNotification,
 };
 use aptos_data_client::interface::AptosDataClientInterface;
 use aptos_data_streaming_service::streaming_client::{
@@ -270,7 +271,13 @@ impl<
                 ConsensusNotification::SyncToTarget(sync_notification) => {
                     let _ = self
                         .consensus_notification_handler
-                        .respond_to_sync_notification(sync_notification, Err(error.clone()))
+                        .respond_to_sync_target_notification(sync_notification, Err(error.clone()))
+                        .await;
+                },
+                ConsensusNotification::SyncForDuration(sync_duration) => {
+                    let _ = self
+                        .consensus_notification_handler
+                        .respond_to_sync_duration_notification(sync_duration, Err(error.clone()))
                         .await;
                 },
             }
@@ -287,7 +294,11 @@ impl<
                     .await
             },
             ConsensusNotification::SyncToTarget(sync_notification) => {
-                self.handle_consensus_sync_notification(sync_notification)
+                self.handle_consensus_sync_target_notification(sync_notification)
+                    .await
+            },
+            ConsensusNotification::SyncForDuration(sync_notification) => {
+                self.handle_consensus_sync_duration_notification(sync_notification)
                     .await
             },
         };
@@ -373,28 +384,53 @@ impl<
         }
     }
 
-    /// Handles a consensus or consensus observer request to sync to a specified target
-    async fn handle_consensus_sync_notification(
+    /// Handles a consensus or consensus observer request to sync for a specified duration
+    async fn handle_consensus_sync_duration_notification(
         &mut self,
-        sync_notification: ConsensusSyncNotification,
+        sync_duration_notification: ConsensusSyncDurationNotification,
     ) -> Result<(), Error> {
+        // Log the sync duration notification
         let latest_synced_version = utils::fetch_pre_committed_version(self.storage.clone())?;
         info!(
             LogSchema::new(LogEntry::ConsensusNotification).message(&format!(
-            "Received a consensus sync notification! Target version: {:?}. Latest synced version: {:?}",
-            sync_notification.target, latest_synced_version,
+                "Received a consensus sync duration notification! Duration: {:?}. Latest synced version: {:?}",
+                sync_duration_notification.duration, latest_synced_version,
             ))
         );
         metrics::increment_counter(
             &metrics::DRIVER_COUNTERS,
-            metrics::DRIVER_CONSENSUS_SYNC_NOTIFICATION,
+            metrics::DRIVER_CONSENSUS_SYNC_DURATION_NOTIFICATION,
+        );
+
+        // Initialize a new sync request
+        self.consensus_notification_handler
+            .initialize_sync_duration_request(sync_duration_notification)
+            .await
+    }
+
+    /// Handles a consensus or consensus observer request to sync to a specified target
+    async fn handle_consensus_sync_target_notification(
+        &mut self,
+        sync_target_notification: ConsensusSyncTargetNotification,
+    ) -> Result<(), Error> {
+        // Log the sync target notification
+        let latest_synced_version = utils::fetch_pre_committed_version(self.storage.clone())?;
+        info!(
+            LogSchema::new(LogEntry::ConsensusNotification).message(&format!(
+            "Received a consensus sync notification! Target version: {:?}. Latest synced version: {:?}",
+            sync_target_notification.target, latest_synced_version,
+            ))
+        );
+        metrics::increment_counter(
+            &metrics::DRIVER_COUNTERS,
+            metrics::DRIVER_CONSENSUS_SYNC_TARGET_NOTIFICATION,
         );
 
         // Initialize a new sync request
         let latest_synced_ledger_info =
             utils::fetch_latest_synced_ledger_info(self.storage.clone())?;
         self.consensus_notification_handler
-            .initialize_sync_request(sync_notification, latest_synced_ledger_info)
+            .initialize_sync_request(sync_target_notification, latest_synced_ledger_info)
             .await
     }
 

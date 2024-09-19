@@ -43,6 +43,9 @@ pub trait ConsensusNotificationSender: Send + Sync {
         subscribable_events: Vec<ContractEvent>,
     ) -> Result<(), Error>;
 
+    /// Notify state sync to synchronize storage for the specified duration.
+    async fn sync_for_duration(&self, duration: Duration) -> Result<(), Error>;
+
     /// Notify state sync to synchronize storage to the specified target.
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), Error>;
 }
@@ -93,7 +96,7 @@ impl ConsensusNotificationSender for ConsensusNotifier {
             return Ok(());
         }
 
-        // Construct a channel to receive a state sync response
+        // Create a consensus commit notification
         let (callback, callback_receiver) = oneshot::channel();
         let commit_notification =
             ConsensusNotification::NotifyCommit(ConsensusCommitNotification {
@@ -131,17 +134,49 @@ impl ConsensusNotificationSender for ConsensusNotifier {
         }
     }
 
-    async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), Error> {
-        // Construct a channel to receive a state sync response
+    async fn sync_for_duration(&self, duration: Duration) -> Result<(), Error> {
+        // Create a sync duration notification
         let (callback, callback_receiver) = oneshot::channel();
-        let sync_notification =
-            ConsensusNotification::SyncToTarget(ConsensusSyncNotification { target, callback });
+        let sync_duration_notification =
+            ConsensusNotification::SyncForDuration(ConsensusSyncDurationNotification {
+                duration,
+                callback,
+            });
 
         // Send the notification to state sync
         if let Err(error) = self
             .notification_sender
             .clone()
-            .send(sync_notification)
+            .send(sync_duration_notification)
+            .await
+        {
+            return Err(Error::NotificationError(format!(
+                "Failed to notify state sync of sync duration! Error: {:?}",
+                error
+            )));
+        }
+
+        // Process the response
+        match callback_receiver.await {
+            Ok(response) => response.result,
+            Err(error) => Err(Error::UnexpectedErrorEncountered(format!("{:?}", error))),
+        }
+    }
+
+    async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), Error> {
+        // Create a sync target notification
+        let (callback, callback_receiver) = oneshot::channel();
+        let sync_target_notification =
+            ConsensusNotification::SyncToTarget(ConsensusSyncTargetNotification {
+                target,
+                callback,
+            });
+
+        // Send the notification to state sync
+        if let Err(error) = self
+            .notification_sender
+            .clone()
+            .send(sync_target_notification)
             .await
         {
             return Err(Error::NotificationError(format!(
@@ -183,13 +218,25 @@ impl ConsensusNotificationListener {
             .map_err(|error| Error::UnexpectedErrorEncountered(format!("{:?}", error)))
     }
 
-    /// Respond to the sync notification
-    pub async fn respond_to_sync_notification(
+    /// Respond to the sync duration notification
+    pub async fn respond_to_sync_duration_notification(
         &mut self,
-        consensus_sync_notification: ConsensusSyncNotification,
+        sync_duration_notification: ConsensusSyncDurationNotification,
         result: Result<(), Error>,
     ) -> Result<(), Error> {
-        consensus_sync_notification
+        sync_duration_notification
+            .callback
+            .send(ConsensusNotificationResponse { result })
+            .map_err(|error| Error::UnexpectedErrorEncountered(format!("{:?}", error)))
+    }
+
+    /// Respond to the sync target notification
+    pub async fn respond_to_sync_target_notification(
+        &mut self,
+        sync_target_notification: ConsensusSyncTargetNotification,
+        result: Result<(), Error>,
+    ) -> Result<(), Error> {
+        sync_target_notification
             .callback
             .send(ConsensusNotificationResponse { result })
             .map_err(|error| Error::UnexpectedErrorEncountered(format!("{:?}", error)))
@@ -213,7 +260,8 @@ impl FusedStream for ConsensusNotificationListener {
 #[derive(Debug)]
 pub enum ConsensusNotification {
     NotifyCommit(ConsensusCommitNotification),
-    SyncToTarget(ConsensusSyncNotification),
+    SyncForDuration(ConsensusSyncDurationNotification),
+    SyncToTarget(ConsensusSyncTargetNotification),
 }
 
 /// A commit notification to notify state sync of new commits
@@ -246,21 +294,36 @@ pub struct ConsensusNotificationResponse {
     pub result: Result<(), Error>,
 }
 
+#[derive(Debug)]
+pub struct ConsensusSyncDurationNotification {
+    pub duration: Duration,
+    pub(crate) callback: oneshot::Sender<ConsensusNotificationResponse>,
+}
+
+impl ConsensusSyncDurationNotification {
+    pub fn new(duration: Duration) -> (Self, oneshot::Receiver<ConsensusNotificationResponse>) {
+        let (callback, callback_receiver) = oneshot::channel();
+        let sync_duration_notification = ConsensusSyncDurationNotification { duration, callback };
+
+        (sync_duration_notification, callback_receiver)
+    }
+}
+
 /// A notification for state sync to synchronize to the given target
 #[derive(Debug)]
-pub struct ConsensusSyncNotification {
+pub struct ConsensusSyncTargetNotification {
     pub target: LedgerInfoWithSignatures,
     pub(crate) callback: oneshot::Sender<ConsensusNotificationResponse>,
 }
 
-impl ConsensusSyncNotification {
+impl ConsensusSyncTargetNotification {
     pub fn new(
         target: LedgerInfoWithSignatures,
     ) -> (Self, oneshot::Receiver<ConsensusNotificationResponse>) {
         let (callback, callback_receiver) = oneshot::channel();
-        let sync_notification = ConsensusSyncNotification { target, callback };
+        let sync_target_notification = ConsensusSyncTargetNotification { target, callback };
 
-        (sync_notification, callback_receiver)
+        (sync_target_notification, callback_receiver)
     }
 }
 
@@ -349,9 +412,10 @@ mod tests {
             result => panic!("Expected consensus notification but got: {:?}", result),
         };
 
-        // Send a sync notification
+        // Send a sync to target notification
+        let notifier = consensus_notifier.clone();
         let _thread = std::thread::spawn(move || {
-            let _result = block_on(consensus_notifier.sync_to_target(create_ledger_info()));
+            let _result = block_on(notifier.sync_to_target(create_ledger_info()));
         });
 
         // Give the thread enough time to spawn and send the notification
@@ -363,7 +427,37 @@ mod tests {
                 ConsensusNotification::SyncToTarget(sync_notification) => {
                     assert_eq!(create_ledger_info(), sync_notification.target);
                 },
-                result => panic!("Expected consensus sync notification but got: {:?}", result),
+                result => panic!(
+                    "Expected consensus sync target notification but got: {:?}",
+                    result
+                ),
+            },
+            result => panic!("Expected consensus notification but got: {:?}", result),
+        };
+
+        // Send a sync for duration notification
+        let duration_secs = 10;
+        let notifier = consensus_notifier.clone();
+        let _thread = std::thread::spawn(move || {
+            let _result = block_on(notifier.sync_for_duration(Duration::from_secs(duration_secs)));
+        });
+
+        // Give the thread enough time to spawn and send the notification
+        std::thread::sleep(Duration::from_millis(1000));
+
+        // Verify the notification arrives at the receiver
+        match consensus_listener.select_next_some().now_or_never() {
+            Some(consensus_notification) => match consensus_notification {
+                ConsensusNotification::SyncForDuration(sync_notification) => {
+                    assert_eq!(
+                        Duration::from_secs(duration_secs),
+                        sync_notification.duration
+                    );
+                },
+                result => panic!(
+                    "Expected consensus sync duration notification but got: {:?}",
+                    result
+                ),
             },
             result => panic!("Expected consensus notification but got: {:?}", result),
         };
@@ -387,10 +481,21 @@ mod tests {
                     );
                 },
                 Some(ConsensusNotification::SyncToTarget(sync_notification)) => {
-                    let _result = block_on(consensus_listener.respond_to_sync_notification(
+                    let _result = block_on(consensus_listener.respond_to_sync_target_notification(
                         sync_notification,
-                        Err(Error::UnexpectedErrorEncountered("Oops?".into())),
+                        Err(Error::UnexpectedErrorEncountered(
+                            "Oops! Sync to target failed!".into(),
+                        )),
                     ));
+                },
+                Some(ConsensusNotification::SyncForDuration(sync_notification)) => {
+                    let _result =
+                        block_on(consensus_listener.respond_to_sync_duration_notification(
+                            sync_notification,
+                            Err(Error::UnexpectedErrorEncountered(
+                                "Oops! Sync for duration failed!".into(),
+                            )),
+                        ));
                 },
                 _ => { /* Do nothing */ },
             }
@@ -401,8 +506,12 @@ mod tests {
             block_on(consensus_notifier.notify_new_commit(vec![create_user_transaction()], vec![]));
         assert_ok!(notify_result);
 
-        // Send a sync notification and very an error response
+        // Send a sync target notification and very an error response
         let notify_result = block_on(consensus_notifier.sync_to_target(create_ledger_info()));
+        assert_err!(notify_result);
+
+        // Send a sync for duration notification and very an error response
+        let notify_result = block_on(consensus_notifier.sync_for_duration(Duration::from_secs(10)));
         assert_err!(notify_result);
     }
 
