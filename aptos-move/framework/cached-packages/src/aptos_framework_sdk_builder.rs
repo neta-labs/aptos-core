@@ -518,7 +518,7 @@ pub enum EntryFunctionCall {
         function_name: Vec<u8>,
     },
 
-    LiteAccountRemoveDispatchableAuthenticationFunciton {
+    LiteAccountRemoveDispatchableAuthenticationFunction {
         module_address: AccountAddress,
         module_name: Vec<u8>,
         function_name: Vec<u8>,
@@ -1376,11 +1376,11 @@ impl EntryFunctionCall {
                 module_name,
                 function_name,
             ),
-            LiteAccountRemoveDispatchableAuthenticationFunciton {
+            LiteAccountRemoveDispatchableAuthenticationFunction {
                 module_address,
                 module_name,
                 function_name,
-            } => lite_account_remove_dispatchable_authentication_funciton(
+            } => lite_account_remove_dispatchable_authentication_function(
                 module_address,
                 module_name,
                 function_name,
@@ -3059,7 +3059,7 @@ pub fn lite_account_add_dispatchable_authentication_function(
     ))
 }
 
-pub fn lite_account_remove_dispatchable_authentication_funciton(
+pub fn lite_account_remove_dispatchable_authentication_function(
     module_address: AccountAddress,
     module_name: Vec<u8>,
     function_name: Vec<u8>,
@@ -3072,7 +3072,7 @@ pub fn lite_account_remove_dispatchable_authentication_funciton(
             ]),
             ident_str!("lite_account").to_owned(),
         ),
-        ident_str!("remove_dispatchable_authentication_funciton").to_owned(),
+        ident_str!("remove_dispatchable_authentication_function").to_owned(),
         vec![],
         vec![
             bcs::to_bytes(&module_address).unwrap(),
@@ -5648,12 +5648,12 @@ mod decoder {
         }
     }
 
-    pub fn lite_account_remove_dispatchable_authentication_funciton(
+    pub fn lite_account_remove_dispatchable_authentication_function(
         payload: &TransactionPayload,
     ) -> Option<EntryFunctionCall> {
         if let TransactionPayload::EntryFunction(script) = payload {
             Some(
-                EntryFunctionCall::LiteAccountRemoveDispatchableAuthenticationFunciton {
+                EntryFunctionCall::LiteAccountRemoveDispatchableAuthenticationFunction {
                     module_address: bcs::from_bytes(script.args().get(0)?).ok()?,
                     module_name: bcs::from_bytes(script.args().get(1)?).ok()?,
                     function_name: bcs::from_bytes(script.args().get(2)?).ok()?,
@@ -6993,8 +6993,8 @@ static SCRIPT_FUNCTION_DECODER_MAP: once_cell::sync::Lazy<EntryFunctionDecoderMa
             Box::new(decoder::lite_account_add_dispatchable_authentication_function),
         );
         map.insert(
-            "lite_account_remove_dispatchable_authentication_funciton".to_string(),
-            Box::new(decoder::lite_account_remove_dispatchable_authentication_funciton),
+            "lite_account_remove_dispatchable_authentication_function".to_string(),
+            Box::new(decoder::lite_account_remove_dispatchable_authentication_function),
         );
         map.insert(
             "lite_account_remove_dispatchable_authenticator".to_string(),
