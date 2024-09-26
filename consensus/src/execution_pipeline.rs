@@ -290,6 +290,8 @@ impl ExecutionPipeline {
             };
             let block = ExecutableBlock::new(block.block_id, transactions);
 
+            // let blocking_txn_provider;
+
             let executor = executor.clone();
             let state_checkpoint_output = monitor!(
                 "execute_block",
