@@ -255,11 +255,7 @@ impl ExecutionPipeline {
                         }
                     });
             });
-            info!(
-                "Execution: Waiting for part of committed transactions for round {} took {} ms",
-                pipelined_block.round(),
-                now.elapsed().as_millis()
-            );
+
             let prev_input_txns_len = input_txns.len();
             let input_txns: Vec<_> = input_txns
                 .into_iter()

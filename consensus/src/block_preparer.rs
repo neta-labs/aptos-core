@@ -127,21 +127,6 @@ impl BlockPreparer {
             block.round(),
             now.elapsed().as_millis()
         );
-        // TODO: this blocks the pipeline, so removed for now, to be revived with a streaming TransactionProvider based BlockSTM
-        // block_window
-        //     .pipelined_blocks()
-        //     .iter()
-        //     .filter(|window_block| window_block.round() == block.round() - 1)
-        //     .for_each(|b| {
-        //         // TODO: this wait means there is no pipeline with execution
-        //         for txn_hash in b.wait_for_committed_transactions() {
-        //             committed_transactions.insert(*txn_hash);
-        //         }
-        //     });
-        // info!(
-        //     "BlockPreparer: Waiting for all committed transactions took {:?}",
-        //     now.elapsed()
-        // );
 
         let txn_filter = self.txn_filter.clone();
         let txn_deduper = self.txn_deduper.clone();
@@ -172,7 +157,6 @@ impl BlockPreparer {
 
                 txn_shuffler.shuffle(deduped_txns)
             };
-
             if let Some(max_txns_from_block_to_execute) = max_txns_from_block_to_execute {
                 shuffled_txns.truncate(max_txns_from_block_to_execute as usize);
             }
