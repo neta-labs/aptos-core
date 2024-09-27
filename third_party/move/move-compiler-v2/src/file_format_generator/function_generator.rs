@@ -887,6 +887,16 @@ impl<'a> FunctionGenerator<'a> {
     /// translation. In the actual Move bytecode, a `Nop` is inserted
     /// at the current code offset.
     fn gen_spec_block(&mut self, ctx: &BytecodeContext, spec: &Spec) {
+        let used_temps = self.collect_temps_from_spec(spec);
+        for temp in used_temps {
+            let live_after = ctx.is_alive_after(temp, &[], false);
+            let local = self.temps.get(&temp).expect("temp has mapping").local;
+            if !live_after && temp >= ctx.fun_ctx.fun.get_parameter_count() {
+                self.emit(FF::Bytecode::MoveLoc(local));
+                self.emit(FF::Bytecode::Pop);
+            }
+        }
+
         let mut replacer = |id: NodeId, target: RewriteTarget| {
             if let RewriteTarget::Temporary(temp) = target {
                 Some(
@@ -904,6 +914,31 @@ impl<'a> FunctionGenerator<'a> {
             .rewrite_spec_descent(&SpecBlockTarget::Inline, spec);
         self.spec_blocks.insert(self.code.len() as CodeOffset, spec);
         self.emit(FF::Bytecode::Nop)
+    }
+
+    fn collect_temps_from_spec(&mut self, spec: &Spec) -> BTreeSet<TempIndex> {
+        let mut temps = BTreeSet::new();
+        for cond in spec.conditions.iter() {
+            for exp in cond.all_exps() {
+                exp.visit_pre_order(&mut |inner: &ExpData| {
+                    if let ExpData::Temporary(_, temp_index) = inner {
+                        temps.insert(*temp_index);
+                    }
+                    true
+                })
+            }
+        }
+        for (_, cond) in spec.update_map.iter() {
+            for exp in cond.all_exps() {
+                exp.visit_pre_order(&mut |inner: &ExpData| {
+                    if let ExpData::Temporary(_, temp_index) = inner {
+                        temps.insert(*temp_index);
+                    }
+                    true
+                })
+            }
+        }
+        temps
     }
 
     /// Emits a file-format bytecode.

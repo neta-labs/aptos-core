@@ -1,0 +1,118 @@
+
+============ disassembled file-format ==================
+// Move bytecode v7
+module c0ffee.m {
+use 0000000000000000000000000000000000000000000000000000000000000001::option;
+use 0000000000000000000000000000000000000000000000000000000000000001::vector;
+
+
+struct T has copy, drop, store {
+	issuer: vector<u8>,
+	version: u64
+}
+struct J has copy, drop, store {
+	variant: u64
+}
+struct S has copy, drop, store {
+	entries: vector<T>
+}
+
+test(Arg0: &mut S, Arg1: vector<u8>): Option<T> /* def_idx: 0 */ {
+L2:	loc0: &vector<T>
+L3:	loc1: bool
+L4:	loc2: u64
+L5:	loc3: u64
+L6:	loc4: u64
+L7:	loc5: &T
+L8:	loc6: &T
+L9:	loc7: u64
+L10:	loc8: bool
+L11:	loc9: u64
+L12:	loc10: Option<T>
+L13:	loc11: Option<T>
+B0:
+	0: CopyLoc[0](Arg0: &mut S)
+	1: ImmBorrowField[0](S.entries: vector<T>)
+	2: StLoc[2](loc0: &vector<T>)
+	3: LdFalse
+	4: StLoc[3](loc1: bool)
+	5: LdU64(0)
+	6: StLoc[4](loc2: u64)
+	7: LdU64(0)
+	8: CopyLoc[2](loc0: &vector<T>)
+	9: VecLen(2)
+	10: StLoc[5](loc3: u64)
+	11: StLoc[6](loc4: u64)
+B1:
+	12: CopyLoc[6](loc4: u64)
+	13: CopyLoc[5](loc3: u64)
+	14: Lt
+	15: BrFalse(43)
+B2:
+	16: CopyLoc[2](loc0: &vector<T>)
+	17: CopyLoc[6](loc4: u64)
+	18: VecImmBorrow(2)
+	19: StLoc[7](loc5: &T)
+	20: MoveLoc[7](loc5: &T)
+	21: StLoc[8](loc6: &T)
+	22: MoveLoc[8](loc6: &T)
+	23: ImmBorrowField[1](T.issuer: vector<u8>)
+	24: ReadRef
+	25: CopyLoc[1](Arg1: vector<u8>)
+	26: Eq
+	27: BrFalse(36)
+B3:
+	28: CopyLoc[2](loc0: &vector<T>)
+	29: Pop
+	30: LdTrue
+	31: StLoc[3](loc1: bool)
+	32: MoveLoc[6](loc4: u64)
+	33: StLoc[4](loc2: u64)
+	34: Branch(47)
+B4:
+	35: Branch(36)
+B5:
+	36: LdU64(1)
+	37: StLoc[9](loc7: u64)
+	38: MoveLoc[6](loc4: u64)
+	39: MoveLoc[9](loc7: u64)
+	40: Add
+	41: StLoc[6](loc4: u64)
+	42: Branch(46)
+B6:
+	43: CopyLoc[2](loc0: &vector<T>)
+	44: Pop
+	45: Branch(47)
+B7:
+	46: Branch(12)
+B8:
+	47: MoveLoc[2](loc0: &vector<T>)
+	48: Pop
+	49: Nop
+	50: MoveLoc[3](loc1: bool)
+	51: StLoc[10](loc8: bool)
+	52: MoveLoc[4](loc2: u64)
+	53: StLoc[11](loc9: u64)
+	54: MoveLoc[10](loc8: bool)
+	55: BrFalse(63)
+B9:
+	56: MoveLoc[0](Arg0: &mut S)
+	57: MutBorrowField[0](S.entries: vector<T>)
+	58: MoveLoc[11](loc9: u64)
+	59: Call vector::remove<T>(&mut vector<T>, u64): T
+	60: Call option::some<T>(T): Option<T>
+	61: StLoc[12](loc10: Option<T>)
+	62: Branch(67)
+B10:
+	63: MoveLoc[0](Arg0: &mut S)
+	64: Pop
+	65: Call option::none<T>(): Option<T>
+	66: StLoc[12](loc10: Option<T>)
+B11:
+	67: MoveLoc[12](loc10: Option<T>)
+	68: StLoc[13](loc11: Option<T>)
+	69: MoveLoc[13](loc11: Option<T>)
+	70: Ret
+}
+}
+============ bytecode verification succeeded ========

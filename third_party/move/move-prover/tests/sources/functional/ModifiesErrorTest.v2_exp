@@ -136,4 +136,5 @@ error: unknown assertion failed
    =     at tests/sources/functional/ModifiesErrorTest.move:92: mutate_S_test2_incorrect
    =     at tests/sources/functional/ModifiesErrorTest.move:93: mutate_S_test2_incorrect
    =         x1 = <redacted>
+   =     at tests/sources/functional/ModifiesErrorTest.move:94: mutate_S_test2_incorrect
    =     at tests/sources/functional/ModifiesErrorTest.move:95: mutate_S_test2_incorrect

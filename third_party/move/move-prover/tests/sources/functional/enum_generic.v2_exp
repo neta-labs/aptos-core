@@ -17,4 +17,5 @@ error: unknown assertion failed
    =     at tests/sources/functional/enum_generic.move:24: test_enum_vector
    =     at tests/sources/functional/enum_generic.move:22: test_enum_vector
    =         _common_vector_2 = <redacted>
+   =     at tests/sources/functional/enum_generic.move:26: test_enum_vector
    =     at tests/sources/functional/enum_generic.move:27: test_enum_vector
