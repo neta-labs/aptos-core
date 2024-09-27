@@ -60,7 +60,7 @@ impl AptosDebugger {
     ) -> Result<Vec<TransactionOutput>> {
         let sig_verified_txns: Vec<SignatureVerifiedTransaction> =
             txns.into_iter().map(|x| x.into()).collect::<Vec<_>>();
-        let txn_provider = DefaultTxnProvider::new(sig_verified_txns);
+        let txn_provider = Arc::new(DefaultTxnProvider::new(sig_verified_txns));
         let state_view = DebuggerStateView::new(self.debugger.clone(), version);
 
         print_transaction_stats(txn_provider.get_txns(), version);
@@ -71,7 +71,7 @@ impl AptosDebugger {
             for i in 0..repeat_execution_times {
                 let start_time = Instant::now();
                 let cur_result =
-                    execute_block_no_limit(&txn_provider, &state_view, *concurrency_level)
+                    execute_block_no_limit(txn_provider.clone(), &state_view, *concurrency_level)
                         .map_err(|err| format_err!("Unexpected VM Error: {:?}", err))?;
 
                 println!(
@@ -422,14 +422,14 @@ fn is_reconfiguration(vm_output: &TransactionOutput) -> bool {
 }
 
 fn execute_block_no_limit(
-    txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+    txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
     state_view: &DebuggerStateView,
     concurrency_level: usize,
 ) -> Result<Vec<TransactionOutput>, VMStatus> {
     BlockAptosVM::execute_block::<
         _,
         NoOpTransactionCommitHook<AptosTransactionOutput, VMStatus>,
-        DefaultTxnProvider<SignatureVerifiedTransaction>,
+        dyn TxnProvider<SignatureVerifiedTransaction>,
     >(
         txn_provider,
         state_view,

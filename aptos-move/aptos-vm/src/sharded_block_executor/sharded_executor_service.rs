@@ -136,10 +136,11 @@ impl<S: StateView + Sync + Send + 'static> ShardedExecutorService<S> {
                 );
             });
             s.spawn(move |_| {
-                let txn_provider = DefaultTxnProvider::new(signature_verified_transactions);
+                let txn_provider =
+                    Arc::new(DefaultTxnProvider::new(signature_verified_transactions));
                 let ret = BlockAptosVM::execute_block_on_thread_pool(
                     executor_thread_pool,
-                    &txn_provider,
+                    txn_provider.clone(),
                     aggr_overridden_state_view.as_ref(),
                     config,
                     cross_shard_commit_sender,
@@ -165,6 +166,7 @@ impl<S: StateView + Sync + Send + 'static> ShardedExecutorService<S> {
                 callback.send(ret).unwrap();
                 executor_thread_pool_clone.spawn(move || {
                     // Explicit async drop
+                    // TODO: does this drop the provider or the arc?
                     drop(txn_provider);
                 });
             });

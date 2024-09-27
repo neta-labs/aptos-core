@@ -30,6 +30,10 @@ impl<T: Transaction> TxnProvider<T> for DefaultTxnProvider<T> {
     fn get_txn(&self, idx: TxnIndex) -> Arc<T> {
         self.txns[idx as usize].clone()
     }
+
+    fn to_vec(&self) -> Vec<T> {
+        self.txns.iter().map(|txn| txn.as_ref().clone()).collect()
+    }
 }
 
 impl<T: Transaction> Iterator for DefaultTxnProvider<T> {

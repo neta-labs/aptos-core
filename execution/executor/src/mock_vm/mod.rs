@@ -27,7 +27,7 @@ use aptos_types::{
         TransactionArgument, TransactionAuxiliaryData, TransactionOutput, TransactionPayload,
         TransactionStatus, WriteSetPayload,
     },
-    txn_provider::{default::DefaultTxnProvider, TxnProvider},
+    txn_provider::TxnProvider,
     vm_status::{StatusCode, VMStatus},
     write_set::{WriteOp, WriteSet, WriteSetMut},
 };
@@ -73,7 +73,7 @@ impl TransactionBlockExecutor for MockVM {
 
 impl VMExecutor for MockVM {
     fn execute_block(
-        txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
         state_view: &impl StateView,
         _onchain_config: BlockExecutorConfigFromOnchain,
     ) -> Result<BlockOutput<TransactionOutput>, VMStatus> {

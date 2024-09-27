@@ -63,7 +63,7 @@ use std::{
     },
 };
 
-pub struct BlockExecutor<T, E, S, L, X, TP> {
+pub struct BlockExecutor<T, E, S, L, X, TP: ?Sized> {
     // Number of active concurrent tasks, corresponding to the maximum number of rayon
     // threads that may be concurrently participating in parallel execution.
     config: BlockExecutorConfig,
@@ -79,7 +79,7 @@ where
     S: TStateView<Key = T::Key> + Sync,
     L: TransactionCommitHook<Output = E::Output>,
     X: Executable + 'static,
-    TP: TxnProvider<T> + Sync,
+    TP: TxnProvider<T> + Sync + ?Sized,
 {
     /// The caller needs to ensure that concurrency_level > 1 (0 is illegal and 1 should
     /// be handled by sequential execution) and that concurrency_level <= num_cpus.
@@ -104,7 +104,7 @@ where
     fn execute(
         idx_to_execute: TxnIndex,
         incarnation: Incarnation,
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         last_input_output: &TxnLastInputOutput<T, E::Output, E::Error>,
         versioned_cache: &MVHashMap<T::Key, T::Tag, T::Value, X, T::Identifier>,
         executor: &E,
@@ -465,7 +465,7 @@ where
         start_shared_counter: u32,
         shared_counter: &AtomicU32,
         executor: &E,
-        block: &TP,
+        block: Arc<TP>,
         num_workers: usize,
     ) -> Result<(), PanicOr<ParallelBlockExecutionError>> {
         let mut block_limit_processor = shared_commit_state.acquire();
@@ -482,7 +482,7 @@ where
                 let _needs_suffix_validation = Self::execute(
                     txn_idx,
                     incarnation + 1,
-                    block,
+                    block.clone(),
                     last_input_output,
                     versioned_cache,
                     executor,
@@ -750,7 +750,7 @@ where
     fn worker_loop(
         &self,
         env: &E::Environment,
-        block: &TP,
+        block: Arc<TP>,
         last_input_output: &TxnLastInputOutput<T, E::Output, E::Error>,
         versioned_cache: &MVHashMap<T::Key, T::Tag, T::Value, X, T::Identifier>,
         scheduler: &Scheduler,
@@ -799,7 +799,7 @@ where
                     start_shared_counter,
                     shared_counter,
                     &executor,
-                    block,
+                    block.clone(),
                     num_workers,
                 )?;
                 scheduler.queueing_commits_mark_done();
@@ -828,7 +828,7 @@ where
                     let needs_suffix_validation = Self::execute(
                         txn_idx,
                         incarnation,
-                        block,
+                        block.clone(),
                         last_input_output,
                         versioned_cache,
                         &executor,
@@ -867,7 +867,7 @@ where
     pub(crate) fn execute_transactions_parallel(
         &self,
         env: &E::Environment,
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         base_view: &S,
     ) -> Result<BlockOutput<E::Output>, ()> {
         let _timer = PARALLEL_EXECUTION_SECONDS.start_timer();
@@ -916,7 +916,7 @@ where
                 s.spawn(|_| {
                     if let Err(err) = self.worker_loop(
                         env,
-                        signature_verified_block,
+                        signature_verified_block.clone(),
                         &last_input_output,
                         &versioned_cache,
                         &scheduler,
@@ -1041,7 +1041,7 @@ where
     pub(crate) fn execute_transactions_sequential(
         &self,
         env: E::Environment,
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         base_view: &S,
         resource_group_bcs_fallback: bool,
     ) -> Result<BlockOutput<E::Output>, SequentialBlockExecutionError<E::Error>> {
@@ -1353,12 +1353,15 @@ where
     pub fn execute_block(
         &self,
         env: E::Environment,
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         base_view: &S,
     ) -> BlockExecutionResult<BlockOutput<E::Output>, E::Error> {
         if self.config.local.concurrency_level > 1 {
-            let parallel_result =
-                self.execute_transactions_parallel(&env, signature_verified_block, base_view);
+            let parallel_result = self.execute_transactions_parallel(
+                &env,
+                signature_verified_block.clone(),
+                base_view,
+            );
 
             // If parallel gave us result, return it
             if let Ok(output) = parallel_result {
@@ -1379,7 +1382,7 @@ where
         // If we didn't run parallel, or it didn't finish successfully - run sequential
         let sequential_result = self.execute_transactions_sequential(
             env.clone(),
-            signature_verified_block,
+            signature_verified_block.clone(),
             base_view,
             false,
         );
@@ -1402,7 +1405,7 @@ where
 
                 let sequential_result = self.execute_transactions_sequential(
                     env,
-                    signature_verified_block,
+                    signature_verified_block.clone(),
                     base_view,
                     true,
                 );

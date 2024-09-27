@@ -190,16 +190,16 @@ where
     pub(crate) fn execute_sequential(mut self) {
         // The output is ignored here since we're just testing transaction performance, not trying
         // to assert correctness.
-        let txn_provider = DefaultTxnProvider::new(self.gen_transaction());
-        self.execute_benchmark_sequential(&txn_provider, None);
+        let txn_provider = Arc::new(DefaultTxnProvider::new(self.gen_transaction()));
+        self.execute_benchmark_sequential(txn_provider, None);
     }
 
     /// Executes this state in a single block.
     pub(crate) fn execute_parallel(mut self) {
         // The output is ignored here since we're just testing transaction performance, not trying
         // to assert correctness.
-        let txn_provider = DefaultTxnProvider::new(self.gen_transaction());
-        self.execute_benchmark_parallel(&txn_provider, num_cpus::get(), None);
+        let txn_provider = Arc::new(DefaultTxnProvider::new(self.gen_transaction()));
+        self.execute_benchmark_parallel(txn_provider, num_cpus::get(), None);
     }
 
     fn is_shareded(&self) -> bool {
@@ -208,7 +208,7 @@ where
 
     fn execute_benchmark_sequential(
         &self,
-        txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        txn_provider: Arc<DefaultTxnProvider<SignatureVerifiedTransaction>>,
         maybe_block_gas_limit: Option<u64>,
     ) -> (Vec<TransactionOutput>, usize) {
         let block_size = txn_provider.num_txns();
@@ -216,7 +216,7 @@ where
         let output = BlockAptosVM::execute_block::<
             _,
             NoOpTransactionCommitHook<AptosTransactionOutput, VMStatus>,
-            DefaultTxnProvider<SignatureVerifiedTransaction>,
+            dyn TxnProvider<SignatureVerifiedTransaction>,
         >(
             txn_provider,
             self.state_view.as_ref(),
@@ -256,7 +256,7 @@ where
 
     fn execute_benchmark_parallel(
         &self,
-        txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        txn_provider: Arc<DefaultTxnProvider<SignatureVerifiedTransaction>>,
         concurrency_level_per_shard: usize,
         maybe_block_gas_limit: Option<u64>,
     ) -> (Vec<TransactionOutput>, usize) {
@@ -265,7 +265,7 @@ where
         let output = BlockAptosVM::execute_block::<
             _,
             NoOpTransactionCommitHook<AptosTransactionOutput, VMStatus>,
-            DefaultTxnProvider<SignatureVerifiedTransaction>,
+            dyn TxnProvider<SignatureVerifiedTransaction>,
         >(
             txn_provider,
             self.state_view.as_ref(),
@@ -291,7 +291,7 @@ where
         conurrency_level_per_shard: usize,
         maybe_block_gas_limit: Option<u64>,
     ) -> (usize, usize) {
-        let txn_provider = DefaultTxnProvider::new(transactions);
+        let txn_provider = Arc::new(DefaultTxnProvider::new(transactions));
         let (output, par_tps) = if run_par {
             println!("Parallel execution starts...");
             let (output, tps) = if self.is_shareded() {
@@ -302,7 +302,7 @@ where
                 )
             } else {
                 self.execute_benchmark_parallel(
-                    &txn_provider,
+                    txn_provider.clone(),
                     conurrency_level_per_shard,
                     maybe_block_gas_limit,
                 )
@@ -321,7 +321,7 @@ where
         let (output, seq_tps) = if run_seq {
             println!("Sequential execution starts...");
             let (output, tps) =
-                self.execute_benchmark_sequential(&txn_provider, maybe_block_gas_limit);
+                self.execute_benchmark_sequential(txn_provider, maybe_block_gas_limit);
             println!("Sequential execution finishes, TPS = {}", tps);
             (output, tps)
         } else {

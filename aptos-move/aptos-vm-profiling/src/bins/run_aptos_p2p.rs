@@ -12,6 +12,7 @@ use aptos_vm::{AptosVM, VMExecutor};
 use std::{
     collections::HashMap,
     io::{self, Read},
+    sync::Arc,
 };
 
 fn main() -> Result<()> {
@@ -49,8 +50,8 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    let txn_provider = DefaultTxnProvider::new(txns);
-    let res = AptosVM::execute_block_no_limit(&txn_provider, &state_store)?;
+    let txn_provider = Arc::new(DefaultTxnProvider::new(txns));
+    let res = AptosVM::execute_block_no_limit(txn_provider, &state_store)?;
     for i in 0..NUM_TXNS {
         assert!(res[i as usize].status().status().unwrap().is_success());
     }

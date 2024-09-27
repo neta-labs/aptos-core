@@ -33,7 +33,7 @@ use aptos_types::{
         BlockOutput, ExecutionStatus, Transaction, TransactionOutput, TransactionOutputProvider,
         TransactionStatus,
     },
-    txn_provider::default::DefaultTxnProvider,
+    txn_provider::{default::DefaultTxnProvider, TxnProvider},
 };
 use aptos_vm::{AptosVM, VMExecutor};
 use fail::fail_point;
@@ -61,7 +61,19 @@ impl ChunkOutput {
     ) -> Result<Self> {
         match transactions {
             ExecutableTransactions::Unsharded(txns) => {
-                Self::by_transaction_execution_unsharded::<V>(txns, state_view, onchain_config)
+                let txn_provider = DefaultTxnProvider::new(txns);
+                Self::by_transaction_execution_unsharded::<V>(
+                    Arc::new(txn_provider),
+                    state_view,
+                    onchain_config,
+                )
+            },
+            ExecutableTransactions::UnshardedBlocking(blocking_txn_provider) => {
+                Self::by_transaction_execution_unsharded::<V>(
+                    blocking_txn_provider,
+                    state_view,
+                    onchain_config,
+                )
             },
             ExecutableTransactions::Sharded(txns) => {
                 Self::by_transaction_execution_sharded::<V>(txns, state_view, onchain_config)
@@ -70,19 +82,19 @@ impl ChunkOutput {
     }
 
     fn by_transaction_execution_unsharded<V: VMExecutor>(
-        transactions: Vec<SignatureVerifiedTransaction>,
+        txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
         state_view: CachedStateView,
         onchain_config: BlockExecutorConfigFromOnchain,
     ) -> Result<Self> {
-        let txn_provider = DefaultTxnProvider::new(transactions);
-        let block_output = Self::execute_block::<V>(&txn_provider, &state_view, onchain_config)?;
+        let block_output =
+            Self::execute_block::<V>(txn_provider.clone(), &state_view, onchain_config)?;
 
         let (transaction_outputs, block_end_info) = block_output.into_inner();
         Ok(Self {
             transactions: txn_provider
-                .txns
+                .to_vec()
                 .into_iter()
-                .map(|t| Arc::into_inner(t).unwrap().into_inner())
+                .map(|t| t.into_inner())
                 .collect(),
             transaction_outputs,
             state_cache: state_view.into_state_cache(),
@@ -203,7 +215,7 @@ impl ChunkOutput {
     /// a vector of [TransactionOutput]s.
     #[cfg(not(feature = "consensus-only-perf-test"))]
     fn execute_block<V: VMExecutor>(
-        txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
         state_view: &CachedStateView,
         onchain_config: BlockExecutorConfigFromOnchain,
     ) -> Result<BlockOutput<TransactionOutput>> {
@@ -216,7 +228,7 @@ impl ChunkOutput {
     /// gas and a [ExecutionStatus::Success] for each of the [Transaction]s.
     #[cfg(feature = "consensus-only-perf-test")]
     fn execute_block<V: VMExecutor>(
-        txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
         state_view: &CachedStateView,
         onchain_config: BlockExecutorConfigFromOnchain,
     ) -> Result<BlockOutput<TransactionOutput>> {
@@ -229,7 +241,7 @@ impl ChunkOutput {
         let transaction_outputs = match state_view.id() {
             // this state view ID implies a genesis block in non-test cases.
             StateViewId::Miscellaneous => {
-                V::execute_block(&txn_provider, state_view, onchain_config)?
+                V::execute_block(txn_provider, state_view, onchain_config)?
             },
             _ => BlockOutput::new(
                 (0..txn_provider.num_txns())

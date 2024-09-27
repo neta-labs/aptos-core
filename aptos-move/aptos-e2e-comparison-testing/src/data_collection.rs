@@ -93,8 +93,8 @@ impl DataCollection {
         // FIXME(#10412): remove the assert
         let val = debugger_state_view.get_state_value(TOTAL_SUPPLY_STATE_KEY.deref());
         assert!(val.is_ok() && val.unwrap().is_some());
-        let txn_provider = DefaultTxnProvider::new(sig_verified_txns);
-        AptosVM::execute_block_no_limit(&txn_provider, debugger_state_view)
+        let txn_provider = Arc::new(DefaultTxnProvider::new(sig_verified_txns));
+        AptosVM::execute_block_no_limit(txn_provider, debugger_state_view)
             .map_err(|err| format_err!("Unexpected VM Error: {:?}", err))
     }
 

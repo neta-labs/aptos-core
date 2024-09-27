@@ -630,14 +630,14 @@ impl FakeExecutor {
             },
             onchain: onchain_config,
         };
-        let txn_provider = DefaultTxnProvider::new(txn_block);
+        let txn_provider = Arc::new(DefaultTxnProvider::new(txn_block));
         BlockAptosVM::execute_block_on_thread_pool::<
             _,
             NoOpTransactionCommitHook<AptosTransactionOutput, VMStatus>,
             _,
         >(
             self.executor_thread_pool.clone(),
-            &txn_provider,
+            txn_provider,
             &state_view,
             config,
             None,

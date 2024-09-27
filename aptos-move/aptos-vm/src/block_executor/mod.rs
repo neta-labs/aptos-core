@@ -388,10 +388,10 @@ impl BlockAptosVM {
     pub fn execute_block_on_thread_pool<
         S: StateView + Sync,
         L: TransactionCommitHook<Output = AptosTransactionOutput>,
-        TP: TxnProvider<SignatureVerifiedTransaction> + Sync,
+        TP: TxnProvider<SignatureVerifiedTransaction> + Sync + ?Sized,
     >(
         executor_thread_pool: Arc<ThreadPool>,
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         state_view: &S,
         config: BlockExecutorConfig,
         transaction_commit_listener: Option<L>,
@@ -451,9 +451,9 @@ impl BlockAptosVM {
     pub fn execute_block<
         S: StateView + Sync,
         L: TransactionCommitHook<Output = AptosTransactionOutput>,
-        TP: TxnProvider<SignatureVerifiedTransaction> + Sync,
+        TP: TxnProvider<SignatureVerifiedTransaction> + Sync + ?Sized,
     >(
-        signature_verified_block: &TP,
+        signature_verified_block: Arc<TP>,
         state_view: &S,
         config: BlockExecutorConfig,
         transaction_commit_listener: Option<L>,

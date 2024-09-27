@@ -28,6 +28,12 @@ impl<T: Transaction> BlockingTransaction<T> {
     }
 }
 
+impl<T: Transaction> Default for BlockingTransaction<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct BlockingTxnsProvider<T: Transaction> {
     txns: Vec<BlockingTransaction<T>>,
 }
@@ -69,5 +75,14 @@ impl<T: Transaction> TxnProvider<T> for BlockingTxnsProvider<T> {
             BlockingTransactionStatus::Ready(ref txn) => txn.clone(),
             BlockingTransactionStatus::Waiting => panic!("Unexpected status"),
         }
+    }
+
+    fn to_vec(&self) -> Vec<T> {
+        let mut txns = vec![];
+        for i in 0..self.num_txns() as TxnIndex {
+            let txn = self.get_txn(i).as_ref().clone();
+            txns.push(txn);
+        }
+        txns
     }
 }

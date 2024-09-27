@@ -15,7 +15,7 @@ use aptos_types::{
     write_set::WriteOp,
 };
 use aptos_vm::VMExecutor;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 fn gen_address(index: u8) -> AccountAddress {
     AccountAddress::new([index; AccountAddress::LENGTH])
@@ -43,8 +43,10 @@ fn test_mock_vm_different_senders() {
         txns.push(encode_mint_transaction(gen_address(i), amount));
     }
 
-    let txn_provider = DefaultTxnProvider::new(into_signature_verified_block(txns.clone()));
-    let outputs = MockVM::execute_block_no_limit(&txn_provider, &MockStateView)
+    let txn_provider = Arc::new(DefaultTxnProvider::new(into_signature_verified_block(
+        txns.clone(),
+    )));
+    let outputs = MockVM::execute_block_no_limit(txn_provider, &MockStateView)
         .expect("MockVM should not fail to start");
 
     for (output, txn) in itertools::zip_eq(outputs.iter(), txns.iter()) {
@@ -80,8 +82,8 @@ fn test_mock_vm_same_sender() {
         txns.push(encode_mint_transaction(sender, amount));
     }
 
-    let txn_provider = DefaultTxnProvider::new(into_signature_verified_block(txns));
-    let outputs = MockVM::execute_block_no_limit(&txn_provider, &MockStateView)
+    let txn_provider = Arc::new(DefaultTxnProvider::new(into_signature_verified_block(txns)));
+    let outputs = MockVM::execute_block_no_limit(txn_provider, &MockStateView)
         .expect("MockVM should not fail to start");
 
     for (i, output) in outputs.iter().enumerate() {
@@ -115,8 +117,8 @@ fn test_mock_vm_payment() {
         encode_transfer_transaction(gen_address(0), gen_address(1), 50),
     ];
 
-    let txn_provider = DefaultTxnProvider::new(into_signature_verified_block(txns));
-    let output = MockVM::execute_block_no_limit(&txn_provider, &MockStateView)
+    let txn_provider = Arc::new(DefaultTxnProvider::new(into_signature_verified_block(txns)));
+    let output = MockVM::execute_block_no_limit(txn_provider, &MockStateView)
         .expect("MockVM should not fail to start");
 
     let mut output_iter = output.iter();

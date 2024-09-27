@@ -36,6 +36,7 @@ use aptos_types::{
         Transaction::UserTransaction,
         TransactionStatus,
     },
+    txn_provider::blocking_txns_provider::{BlockingTransaction, BlockingTxnsProvider},
 };
 use fail::fail_point;
 use futures::future::BoxFuture;
@@ -270,7 +271,7 @@ impl ExecutionPipeline {
             );
 
             // TODO: Find a better way to do this.
-            let transactions = match block.transactions {
+            let blocking_txns_provider = Arc::new(match block.transactions {
                 ExecutableTransactions::Unsharded(txns) => {
                     let transactions: Vec<_> = txns
                         .into_iter()
@@ -282,15 +283,20 @@ impl ExecutionPipeline {
                             }
                         })
                         .collect();
-                    ExecutableTransactions::Unsharded(transactions)
+                    let blocking_txns: Vec<_> = (0..transactions.len())
+                        .map(|_| BlockingTransaction::new())
+                        .collect();
+                    BlockingTxnsProvider::new(blocking_txns)
+                },
+                ExecutableTransactions::UnshardedBlocking(_) => {
+                    unimplemented!("Not expecting this yet.")
                 },
                 ExecutableTransactions::Sharded(_) => {
                     unimplemented!("Sharded transactions are not supported yet.")
                 },
-            };
+            });
+            let transactions = ExecutableTransactions::UnshardedBlocking(blocking_txns_provider);
             let block = ExecutableBlock::new(block.block_id, transactions);
-
-            // let blocking_txn_provider;
 
             let executor = executor.clone();
             let state_checkpoint_output = monitor!(

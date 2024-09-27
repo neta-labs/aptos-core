@@ -28,7 +28,7 @@ use aptos_types::{
         },
         BlockOutput, Transaction, TransactionOutput, TransactionToCommit, Version,
     },
-    txn_provider::default::DefaultTxnProvider,
+    txn_provider::TxnProvider,
     vm_status::VMStatus,
 };
 use aptos_vm::{
@@ -90,7 +90,7 @@ impl VMExecutor for FakeVM {
     }
 
     fn execute_block(
-        _txn_provider: &DefaultTxnProvider<SignatureVerifiedTransaction>,
+        _txn_provider: Arc<dyn TxnProvider<SignatureVerifiedTransaction>>,
         _state_view: &impl StateView,
         _onchain_config: BlockExecutorConfigFromOnchain,
     ) -> Result<BlockOutput<TransactionOutput>, VMStatus> {

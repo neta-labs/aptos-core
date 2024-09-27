@@ -138,7 +138,7 @@ where
             ExecutableTestType,
             DefaultTxnProvider<MockTransaction<KeyType<K>, E>>,
         >::new(config, executor_thread_pool, None)
-        .execute_transactions_parallel(&(), &self.txns_provider, &data_view);
+        .execute_transactions_parallel(&(), Arc::new(self.txns_provider), &data_view);
 
         self.baseline_output.assert_parallel_output(&output);
     }
