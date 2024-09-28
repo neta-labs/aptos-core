@@ -488,7 +488,7 @@ pub enum Type_ {
     // &mut t
     Ref(bool, Box<Type>),
     // (t1,...,tn):t
-    Fun(Vec<Type>, Box<Type>),
+    Fun(Vec<Type>, Box<Type>, Vec<Ability>),
     // ()
     Unit,
     // (t1, t2, ... , tn)
@@ -665,6 +665,9 @@ pub enum Exp_ {
         Spanned<Vec<Exp>>,
     ),
 
+    // e(earg,*)
+    ExpCall(Box<Exp>, Spanned<Vec<Exp>>),
+
     // tn {f1: e1, ... , f_n: e_n }
     Pack(NameAccessChain, Option<Vec<Type>>, Vec<(Field, Exp)>),
 
@@ -688,7 +691,7 @@ pub enum Exp_ {
     // { seq }
     Block(Sequence),
     // | x1 [: t1], ..., xn [: tn] | e
-    Lambda(TypedBindList, Box<Exp>),
+    Lambda(TypedBindList, Box<Exp>, Vec<Ability>),
     // forall/exists x1 : e1, ..., xn [{ t1, .., tk } *] [where cond]: en.
     Quant(
         QuantKind,
@@ -1053,24 +1056,32 @@ impl fmt::Display for BinOp_ {
 
 impl fmt::Display for Visibility {
     fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            Visibility::Public(_) => Visibility::PUBLIC,
-            Visibility::Script(_) => Visibility::SCRIPT,
-            Visibility::Friend(_) => Visibility::FRIEND,
-            Visibility::Package(_) => Visibility::PACKAGE,
-            Visibility::Internal => Visibility::INTERNAL,
-        })
+        write!(
+            f,
+            "{}",
+            match &self {
+                Visibility::Public(_) => Visibility::PUBLIC,
+                Visibility::Script(_) => Visibility::SCRIPT,
+                Visibility::Friend(_) => Visibility::FRIEND,
+                Visibility::Package(_) => Visibility::PACKAGE,
+                Visibility::Internal => Visibility::INTERNAL,
+            }
+        )
     }
 }
 
 impl fmt::Display for Ability_ {
     fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            Ability_::Copy => Ability_::COPY,
-            Ability_::Drop => Ability_::DROP,
-            Ability_::Store => Ability_::STORE,
-            Ability_::Key => Ability_::KEY,
-        })
+        write!(
+            f,
+            "{}",
+            match &self {
+                Ability_::Copy => Ability_::COPY,
+                Ability_::Drop => Ability_::DROP,
+                Ability_::Store => Ability_::STORE,
+                Ability_::Key => Ability_::KEY,
+            }
+        )
     }
 }
 
@@ -1732,11 +1743,12 @@ impl AstDebug for Type_ {
                 }
                 s.ast_debug(w)
             },
-            Type_::Fun(args, result) => {
+            Type_::Fun(args, result, abilities) => {
                 w.write("(");
                 w.comma(args, |w, ty| ty.ast_debug(w));
                 w.write("):");
                 result.ast_debug(w);
+                ability_constraints_ast_debug(w, &abilities);
             },
         }
     }
@@ -1833,6 +1845,12 @@ impl AstDebug for Exp_ {
                 w.comma(rhs, |w, e| e.ast_debug(w));
                 w.write(")");
             },
+            E::ExpCall(arg, sp!(_, rhs)) => {
+                arg.ast_debug(w);
+                w.write("(");
+                w.comma(rhs, |w, e| e.ast_debug(w));
+                w.write(")");
+            },
             E::Pack(ma, tys_opt, fields) => {
                 ma.ast_debug(w);
                 if let Some(ss) = tys_opt {
@@ -1893,11 +1911,18 @@ impl AstDebug for Exp_ {
                 e.ast_debug(w);
             },
             E::Block(seq) => w.block(|w| seq.ast_debug(w)),
-            E::Lambda(sp!(_, tbs), e) => {
+            E::Lambda(sp!(_, tbs), e, abilities) => {
                 w.write("|");
                 tbs.ast_debug(w);
                 w.write("|");
                 e.ast_debug(w);
+                if !abilities.is_empty() {
+                    w.write(" has ");
+                    w.list(abilities, ", ", |w, ab_mod| {
+                        ab_mod.ast_debug(w);
+                        false
+                    });
+                }
             },
             E::Quant(kind, sp!(_, rs), trs, c_opt, e) => {
                 kind.ast_debug(w);
