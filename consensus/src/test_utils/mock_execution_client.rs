@@ -33,7 +33,7 @@ use aptos_types::{
 use futures::{channel::mpsc, SinkExt};
 use futures_channel::mpsc::UnboundedSender;
 use move_core_types::account_address::AccountAddress;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 pub struct MockExecutionClient {
     state_sync_client: mpsc::UnboundedSender<Vec<SignedTransaction>>,
@@ -159,6 +159,10 @@ impl TExecutionClient for MockExecutionClient {
         _peer_id: AccountAddress,
         _commit_msg: IncomingCommitRequest,
     ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn sync_for_duration(&self, _duration: Duration) -> Result<(), StateSyncError> {
         Ok(())
     }
 

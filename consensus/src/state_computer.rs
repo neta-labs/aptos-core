@@ -34,7 +34,11 @@ use aptos_types::{
 };
 use fail::fail_point;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
-use std::{boxed::Box, sync::Arc, time::Instant};
+use std::{
+    boxed::Box,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::Mutex as AsyncMutex;
 
 pub type StateComputeResultFut = BoxFuture<'static, ExecutorResult<PipelineExecutionResult>>;
@@ -328,15 +332,37 @@ impl StateComputer for ExecutionProxy {
         Ok(())
     }
 
-    /// Synchronize to a commit that not present locally.
+    /// Best effort state synchronization for the specified duration
+    async fn sync_for_duration(&self, duration: Duration) -> Result<(), StateSyncError> {
+        // Before state synchronization, we have to call finish() to free the
+        // in-memory SMT held by the BlockExecutor to prevent a memory leak.
+        self.executor.finish();
+
+        // Inject an error for fail point testing
+        fail_point!("consensus::sync_for_duration", |_| {
+            Err(anyhow::anyhow!("Injected error in sync_for_duration").into())
+        });
+
+        // Similarly, after state synchronization, we have to reset the cache of
+        // the BlockExecutor to guarantee the latest committed state is up to date.
+        self.executor.reset()?;
+
+        // Return the result
+        res.map_err(|error| {
+            let anyhow_error: anyhow::Error = error.into();
+            anyhow_error.into()
+        })
+    }
+
+    /// Synchronize to a commit that is not present locally.
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), StateSyncError> {
         let mut latest_logical_time = self.write_mutex.lock().await;
         let logical_time =
             LogicalTime::new(target.ledger_info().epoch(), target.ledger_info().round());
         let block_timestamp = target.commit_info().timestamp_usecs();
 
-        // Before the state synchronization, we have to call finish() to free the in-memory SMT
-        // held by BlockExecutor to prevent memory leak.
+        // Before state synchronization, we have to call finish() to free the
+        // in-memory SMT held by BlockExecutor to prevent a memory leak.
         self.executor.finish();
 
         // The pipeline phase already committed beyond the target block timestamp, just return.
@@ -357,24 +383,27 @@ impl StateComputer for ExecutionProxy {
                 .notify_commit(block_timestamp, Vec::new());
         }
 
+        // Inject an error for fail point testing
         fail_point!("consensus::sync_to_target", |_| {
             Err(anyhow::anyhow!("Injected error in sync_to_target").into())
         });
-        // Here to start to do state synchronization where ChunkExecutor inside will
-        // process chunks and commit to Storage. However, after block execution and
-        // commitments, the sync state of ChunkExecutor may be not up to date so
-        // it is required to reset the cache of ChunkExecutor in State Sync
-        // when requested to sync.
+
+        // Invoke state sync. Here, the ChunkExecutor will process chunks and
+        // commit to storage. However, after block execution and commits, the
+        // internal state of the ChunkExecutor may not be up to date. So, it is
+        // required to reset the cache of the ChunkExecutor in state sync when
+        // requested to sync.
         let res = monitor!(
             "sync_to_target",
             self.state_sync_notifier.sync_to_target(target).await
         );
         *latest_logical_time = logical_time;
 
-        // Similarly, after the state synchronization, we have to reset the cache
-        // of BlockExecutor to guarantee the latest committed state is up to date.
+        // Similarly, after state synchronization, we have to reset the cache of
+        // the BlockExecutor to guarantee the latest committed state is up to date.
         self.executor.reset()?;
 
+        // Return the result
         res.map_err(|error| {
             let anyhow_error: anyhow::Error = error.into();
             anyhow_error.into()

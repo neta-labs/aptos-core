@@ -51,7 +51,7 @@ use futures::{
 };
 use futures_channel::mpsc::unbounded;
 use move_core_types::account_address::AccountAddress;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 #[async_trait::async_trait]
 pub trait TExecutionClient: Send + Sync {
@@ -87,6 +87,9 @@ pub trait TExecutionClient: Send + Sync {
         peer_id: AccountAddress,
         commit_msg: IncomingCommitRequest,
     ) -> Result<()>;
+
+    /// Synchronizes for the specified duration.
+    async fn sync_for_duration(&self, duration: Duration) -> Result<(), StateSyncError>;
 
     /// Synchronize to a commit that is not present locally.
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), StateSyncError>;
@@ -400,6 +403,17 @@ impl TExecutionClient for ExecutionProxyClient {
         }
     }
 
+    async fn sync_for_duration(&self, duration: Duration) -> Result<(), StateSyncError> {
+        fail_point!("consensus::sync_for_duration", |_| {
+            Err(anyhow::anyhow!("Injected error in sync_for_duration").into())
+        });
+
+        self.execution_proxy
+            .sync_for_duration(duration)
+            .await
+            .map_err(|error| error.into())
+    }
+
     async fn sync_to_target(&self, target: LedgerInfoWithSignatures) -> Result<(), StateSyncError> {
         fail_point!("consensus::sync_to_target", |_| {
             Err(anyhow::anyhow!("Injected error in sync_to_target").into())
@@ -408,10 +422,12 @@ impl TExecutionClient for ExecutionProxyClient {
         // Reset the rand and buffer managers to the target round
         self.reset(&target).await?;
 
-        // TODO: handle the sync error, should re-push the ordered blocks to buffer manager
-        // when it's reset but sync fails.
-        self.execution_proxy.sync_to_target(target).await?;
-        Ok(())
+        // TODO: handle the state sync error (e.g., re-push the ordered
+        // blocks to the buffer manager when it's reset but sync fails).
+        self.execution_proxy
+            .sync_to_target(target)
+            .await
+            .map_err(|error| error.into())
     }
 
     async fn reset(&self, target: &LedgerInfoWithSignatures) -> Result<()> {
@@ -520,6 +536,10 @@ impl TExecutionClient for DummyExecutionClient {
     }
 
     fn send_commit_msg(&self, _: AccountAddress, _: IncomingCommitRequest) -> Result<()> {
+        Ok(())
+    }
+
+    async fn sync_for_duration(&self, _: Duration) -> Result<(), StateSyncError> {
         Ok(())
     }
 
