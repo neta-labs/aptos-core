@@ -114,7 +114,16 @@ where
         let _timer = TASK_EXECUTE_SECONDS.start_timer();
         let txn_get_timer = TXN_GET_SECONDS.start_timer();
         let txn = &signature_verified_block.get_txn(idx_to_execute);
-        txn_get_timer.observe_duration();
+        let elapsed = txn_get_timer.stop_and_record();
+        if idx_to_execute < 10
+            || (idx_to_execute < 1000 && idx_to_execute % 10 == 0)
+            || idx_to_execute % 1000 == 0
+        {
+            info!(
+                "[Execution] At txn {}, get_txn took: {:.2e} s",
+                idx_to_execute, elapsed
+            )
+        }
 
         // VM execution.
         let sync_view = LatestView::new(base_view, ViewState::Sync(parallel_state), idx_to_execute);
