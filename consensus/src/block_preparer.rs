@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    counters::{self, MAX_TXNS_FROM_BLOCK_TO_EXECUTE, TXN_SHUFFLE_SECONDS},
+    counters::{self, MAX_TXNS_FROM_BLOCK_TO_EXECUTE},
     monitor,
     payload_manager::TPayloadManager,
     transaction_deduper::TransactionDeduper,
@@ -130,7 +130,6 @@ impl BlockPreparer {
 
         let txn_filter = self.txn_filter.clone();
         let txn_deduper = self.txn_deduper.clone();
-        let txn_shuffler = self.txn_shuffler.clone();
         let block_id = block.id();
         let block_timestamp_usecs = block.timestamp_usecs();
         // Transaction filtering, deduplication and shuffling are CPU intensive tasks, so we run them in a blocking task.
@@ -151,18 +150,12 @@ impl BlockPreparer {
             let filtered_txns = monitor!("filter_transactions", {
                 txn_filter.filter(block_id, block_timestamp_usecs, txns)
             });
-            let deduped_txns = monitor!("dedup_transactions", txn_deduper.dedup(filtered_txns));
-            // let mut shuffled_txns = {
-            //     let _timer = TXN_SHUFFLE_SECONDS.start_timer();
-            //
-            //     txn_shuffler.shuffle(deduped_txns)
-            // };
-            let mut shuffled_txns = deduped_txns;
+            let mut deduped_txns = monitor!("dedup_transactions", txn_deduper.dedup(filtered_txns));
             if let Some(max_txns_from_block_to_execute) = max_txns_from_block_to_execute {
-                shuffled_txns.truncate(max_txns_from_block_to_execute as usize);
+                deduped_txns.truncate(max_txns_from_block_to_execute as usize);
             }
-            MAX_TXNS_FROM_BLOCK_TO_EXECUTE.observe(shuffled_txns.len() as f64);
-            Ok(shuffled_txns)
+            MAX_TXNS_FROM_BLOCK_TO_EXECUTE.observe(deduped_txns.len() as f64);
+            Ok(deduped_txns)
         })
         .await
         .expect("Failed to spawn blocking task for transaction generation");
