@@ -45,7 +45,6 @@ spec aptos_framework::reconfiguration_with_dkg {
         requires chain_status::is_operating();
         requires exists<CoinInfo<AptosCoin>>(@aptos_framework);
         include staking_config::StakingRewardsConfigRequirement;
-        requires exists<stake::ValidatorFees>(@aptos_framework);
         requires exists<features::Features>(@std);
         include config_buffer::OnNewEpochRequirement<version::Version>;
         include config_buffer::OnNewEpochRequirement<gas_schedule::GasScheduleV2>;

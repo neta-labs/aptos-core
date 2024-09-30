@@ -37,7 +37,6 @@ spec aptos_framework::version {
         include staking_config::StakingRewardsConfigRequirement;
         requires chain_status::is_genesis();
         requires timestamp::spec_now_microseconds() >= reconfiguration::last_reconfiguration_time();
-        requires exists<stake::ValidatorFees>(@aptos_framework);
         requires exists<CoinInfo<AptosCoin>>(@aptos_framework);
 
         aborts_if !exists<SetVersionCapability>(signer::address_of(account));
