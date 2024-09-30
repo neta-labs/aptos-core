@@ -317,10 +317,10 @@ impl ExecutionPipeline {
                         }) {
                             let validator_txns: Vec<_> = txns.drain(0..first_user_txn_idx).collect();
                             let shuffle_iterator = crate::transaction_shuffler::use_case_aware::iterator::ShuffledTransactionIterator::new(crate::transaction_shuffler::use_case_aware::Config {
-                            sender_spread_factor: 32,
-                            platform_use_case_spread_factor: 0,
-                            user_use_case_spread_factor: 4,
-                        }).extended_with(txns);
+                                sender_spread_factor: 32,
+                                platform_use_case_spread_factor: 0,
+                                user_use_case_spread_factor: 4,
+                            }).extended_with(txns);
                             for (idx, txn) in validator_txns
                                 .into_iter()
                                 .chain(shuffle_iterator)
