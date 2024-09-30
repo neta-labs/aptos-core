@@ -30,16 +30,21 @@ use aptos_types::{
     block_metadata_ext::BlockMetadataExt,
     transaction::{
         signature_verified_transaction::{
-            SignatureVerifiedTransaction, SignatureVerifiedTransaction::Valid,
+            SignatureVerifiedTransaction,
+            SignatureVerifiedTransaction::{Invalid, Valid},
         },
         SignedTransaction,
         Transaction::UserTransaction,
         TransactionStatus,
     },
-    txn_provider::blocking_txns_provider::{BlockingTransaction, BlockingTxnsProvider},
+    txn_provider::{
+        blocking_txns_provider::{BlockingTransaction, BlockingTxnsProvider},
+        TxnIndex,
+    },
 };
 use fail::fail_point;
 use futures::future::BoxFuture;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use std::{
@@ -271,7 +276,7 @@ impl ExecutionPipeline {
             );
 
             // TODO: Find a better way to do this.
-            let blocking_txns_provider = Arc::new(match block.transactions {
+            let (mut txns, blocking_txns_provider) = match block.transactions {
                 ExecutableTransactions::Unsharded(txns) => {
                     let transactions: Vec<_> = txns
                         .into_iter()
@@ -286,7 +291,10 @@ impl ExecutionPipeline {
                     let blocking_txns: Vec<_> = (0..transactions.len())
                         .map(|_| BlockingTransaction::new())
                         .collect();
-                    BlockingTxnsProvider::new(blocking_txns)
+                    (
+                        transactions,
+                        Arc::new(BlockingTxnsProvider::new(blocking_txns)),
+                    )
                 },
                 ExecutableTransactions::UnshardedBlocking(_) => {
                     unimplemented!("Not expecting this yet.")
@@ -294,6 +302,36 @@ impl ExecutionPipeline {
                 ExecutableTransactions::Sharded(_) => {
                     unimplemented!("Sharded transactions are not supported yet.")
                 },
+            };
+            let blocking_txns_writer = blocking_txns_provider.clone();
+            tokio::spawn(async move {
+                // TODO: keep this previously split so we don't have to re-split it here
+                if let Some((first_user_txn_idx, _)) = txns.iter().find_position(|txn| {
+                    let txn = match txn {
+                        Valid(txn) => txn,
+                        Invalid(txn) => txn,
+                    };
+                    matches!(txn, UserTransaction(_))
+                }) {
+                    let validator_txns: Vec<_> = txns.drain(0..first_user_txn_idx).collect();
+                    let shuffle_iterator = crate::transaction_shuffler::use_case_aware::iterator::ShuffledTransactionIterator::new(crate::transaction_shuffler::use_case_aware::Config {
+                        sender_spread_factor: 32,
+                        platform_use_case_spread_factor: 0,
+                        user_use_case_spread_factor: 4,
+                    }).extended_with(txns);
+                    for (idx, txn) in validator_txns
+                        .into_iter()
+                        .chain(shuffle_iterator)
+                        .enumerate()
+                    {
+                        blocking_txns_writer.set_txn(idx as TxnIndex, txn);
+                    }
+                } else {
+                    // No user transactions in the block.
+                    for (idx, txn) in txns.into_iter().enumerate() {
+                        blocking_txns_writer.set_txn(idx as TxnIndex, txn);
+                    }
+                }
             });
             let transactions = ExecutableTransactions::UnshardedBlocking(blocking_txns_provider);
             let block = ExecutableBlock::new(block.block_id, transactions);

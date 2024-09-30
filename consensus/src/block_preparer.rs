@@ -152,11 +152,12 @@ impl BlockPreparer {
                 txn_filter.filter(block_id, block_timestamp_usecs, txns)
             });
             let deduped_txns = monitor!("dedup_transactions", txn_deduper.dedup(filtered_txns));
-            let mut shuffled_txns = {
-                let _timer = TXN_SHUFFLE_SECONDS.start_timer();
-
-                txn_shuffler.shuffle(deduped_txns)
-            };
+            // let mut shuffled_txns = {
+            //     let _timer = TXN_SHUFFLE_SECONDS.start_timer();
+            //
+            //     txn_shuffler.shuffle(deduped_txns)
+            // };
+            let mut shuffled_txns = deduped_txns;
             if let Some(max_txns_from_block_to_execute) = max_txns_from_block_to_execute {
                 shuffled_txns.truncate(max_txns_from_block_to_execute as usize);
             }
