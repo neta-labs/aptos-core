@@ -254,6 +254,7 @@ pub(crate) mod test {
     use claims::{assert_err, assert_ok_eq};
     use move_core_types::{account_address::AccountAddress, identifier::IdentStr};
     use std::{fmt::Debug, hash::Hash, sync::Arc};
+    use aptos_types::state_store::state_key::StateKey;
 
     #[derive(Clone, Eq, Hash, PartialEq, Debug)]
     pub(crate) struct KeyType<K: Hash + Clone + Debug + Eq>(
@@ -264,6 +265,10 @@ pub(crate) mod test {
     impl<K: Hash + Clone + Eq + Debug> ModulePath for KeyType<K> {
         fn is_module_path(&self) -> bool {
             false
+        }
+
+        fn as_state_key(&self) -> &StateKey {
+            unimplemented!()
         }
 
         fn from_address_and_module_name(

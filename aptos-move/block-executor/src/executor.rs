@@ -47,10 +47,10 @@ use aptos_types::{
 use aptos_vm_logging::{alert, clear_speculative_txn_logs, init_speculative_logs, prelude::*};
 use aptos_vm_types::change_set::randomly_check_layout_matches;
 use bytes::Bytes;
-use claims::assert_none;
+use claims::{assert_none, assert_ok};
 use core::panic;
 use fail::fail_point;
-use move_core_types::{value::MoveTypeLayout, vm_status::StatusCode};
+use move_core_types::{ident_str, value::MoveTypeLayout, vm_status::StatusCode};
 use move_vm_runtime::{RuntimeEnvironment, WithRuntimeEnvironment};
 use num_cpus;
 use rayon::ThreadPool;
@@ -63,6 +63,11 @@ use std::{
         Arc,
     },
 };
+use aptos_types::executable::ModulePath;
+use aptos_types::state_store::state_key::StateKey;
+use aptos_types::vm::modules::ModuleStorageEntryInterface;
+use aptos_vm_environment::environment::CrossBlockModuleCache;
+use move_core_types::account_address::AccountAddress;
 
 pub struct BlockExecutor<T, E, S, L, X> {
     // Number of active concurrent tasks, corresponding to the maximum number of rayon
@@ -187,6 +192,7 @@ where
                     .write(k, idx_to_execute, incarnation, v, maybe_layout);
             }
 
+            let mut modules_written = false;
             for (k, v) in output.module_write_set().into_iter() {
                 if prev_modified_keys.remove(&k).is_none() {
                     needs_suffix_validation = true;
@@ -195,10 +201,14 @@ where
                     versioned_cache
                         .code_storage()
                         .module_storage()
-                        .write_pending(k, idx_to_execute)
+                        .write_pending(k, idx_to_execute);
+                    modules_written = true;
                 } else {
                     versioned_cache.modules().write(k, idx_to_execute, v);
                 }
+            }
+            if modules_written {
+                CrossBlockModuleCache::mark_invalid();
             }
 
             // Then, apply deltas.
@@ -1004,6 +1014,43 @@ where
         let last_input_output = TxnLastInputOutput::new(num_txns);
         let scheduler = Scheduler::new(num_txns);
 
+        let state_key =
+            StateKey::module(&AccountAddress::ONE, ident_str!("transaction_validation"));
+        match CrossBlockModuleCache::get_from_cross_block_module_cache(&state_key) {
+            None => {
+                if let Some(state_value) = base_view.get_state_value(&T::Key::from_address_and_module_name(
+                    &AccountAddress::ONE,
+                ident_str!("transaction_validation"),
+                ))
+                .unwrap() {
+                    let entry = assert_ok!(ModuleStorageEntry::from_state_value(
+                        env.runtime_environment(),
+                        state_value,
+                    ));
+
+                    assert_ok!(CrossBlockModuleCache::traverse(
+                        Arc::new(entry),
+                        &AccountAddress::ONE,
+                        ident_str!("transaction_validation"),
+                        base_view,
+                        env.runtime_environment()
+                    ));
+                }
+            },
+            Some(entry) if !entry.is_verified() => {
+                assert_ok!(CrossBlockModuleCache::traverse(
+                    entry,
+                    &AccountAddress::ONE,
+                    ident_str!("transaction_validation"),
+                    base_view,
+                    env.runtime_environment()
+                ));
+            },
+            _ => {
+                // do nothing
+            },
+        };
+
         let timer = RAYON_EXECUTION_SECONDS.start_timer();
         self.executor_thread_pool.scope(|s| {
             for _ in 0..num_workers {
@@ -1053,6 +1100,12 @@ where
             None
         };
 
+        if env.runtime_environment().vm_config().use_loader_v2 {
+            if CrossBlockModuleCache::is_invalidated() {
+                CrossBlockModuleCache::flush()
+            }
+        }
+
         (!shared_maybe_error.load(Ordering::SeqCst))
             .then(|| BlockOutput::new(final_results.into_inner(), block_end_info))
             .ok_or(())
@@ -1079,14 +1132,19 @@ where
             unsync_map.write(key, Arc::new(write_op), None);
         }
 
+        let mut modules_written = false;
         for (key, write_op) in output.module_write_set().into_iter() {
             if runtime_environment.vm_config().use_loader_v2 {
                 let entry =
                     ModuleStorageEntry::from_transaction_write(runtime_environment, write_op)?;
                 unsync_map.publish_module_storage_entry(key, Arc::new(entry));
+                modules_written = true;
             } else {
                 unsync_map.write_module(key, write_op);
             }
+        }
+        if modules_written {
+            CrossBlockModuleCache::mark_invalid();
         }
 
         let mut second_phase = Vec::new();
@@ -1436,6 +1494,12 @@ where
         } else {
             None
         };
+
+        if env.runtime_environment().vm_config().use_loader_v2 {
+            if CrossBlockModuleCache::is_invalidated() {
+                CrossBlockModuleCache::flush()
+            }
+        }
 
         Ok(BlockOutput::new(ret, block_end_info))
     }

@@ -27,6 +27,7 @@ move-core-types = { workspace = true }
 move-vm-runtime = { workspace = true }
 move-vm-types = { workspace = true }
 once_cell = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 aptos-language-e2e-tests = { workspace = true }

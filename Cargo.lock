@@ -2922,6 +2922,7 @@ dependencies = [
  "aptos-aggregator",
  "aptos-crypto",
  "aptos-types",
+ "aptos-vm-environment",
  "aptos-vm-types",
  "bytes",
  "claims",
@@ -4516,6 +4517,7 @@ dependencies = [
  "move-vm-runtime",
  "move-vm-types",
  "once_cell",
+ "parking_lot 0.12.1",
 ]
 
 [[package]]

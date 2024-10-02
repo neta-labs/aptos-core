@@ -31,6 +31,7 @@ use move_vm_runtime::{
 };
 use move_vm_types::{module_cyclic_dependency_error, module_linker_error};
 use std::{collections::HashSet, sync::Arc};
+use aptos_vm_environment::environment::CrossBlockModuleCache;
 
 impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosCodeStorage<T::Key>
     for LatestView<'a, T, S, X>
@@ -228,14 +229,24 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(Some(module));
         }
 
-        let mut visited = HashSet::new();
-        let module = self.traversed_published_dependencies(
-            version,
-            entry,
-            address,
-            module_name,
-            &mut visited,
-        )?;
+        let module = if CrossBlockModuleCache::is_invalidated() {
+            let mut visited = HashSet::new();
+            self.traversed_published_dependencies(
+                version,
+                entry,
+                address,
+                module_name,
+                &mut visited,
+            )?
+        } else {
+            CrossBlockModuleCache::traverse(
+                entry,
+                address,
+                module_name,
+                self.base_view,
+                self.runtime_environment,
+            )?
+        };
         Ok(Some(module))
     }
 }
@@ -269,7 +280,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
     fn read_module_storage_by_key(
         &self,
         key: &T::Key,
-    ) -> VMResult<ModuleStorageRead<ModuleStorageEntry>> {
+    ) -> VMResult<ModuleStorageRead> {
         let _timer = READ_MODULE_ENTRY_FROM_MODULE_STORAGE_SECONDS.start_timer();
 
         match &self.latest_view {
@@ -319,7 +330,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
         &self,
         address: &AccountAddress,
         module_name: &IdentStr,
-    ) -> VMResult<ModuleStorageRead<ModuleStorageEntry>> {
+    ) -> VMResult<ModuleStorageRead> {
         let key = T::Key::from_address_and_module_name(address, module_name);
         self.read_module_storage_by_key(&key)
     }
