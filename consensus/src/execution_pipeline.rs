@@ -237,11 +237,12 @@ impl ExecutionPipeline {
             lifetime_guard,
         }) = block_rx.recv().await
         {
+            let now = Instant::now();
+
             counters::EXECUTE_BLOCK_WAIT_TIME.observe_duration(command_creation_time.elapsed());
             let block_id = block.block_id;
             info!("execute_stage received block {}.", block_id);
 
-            let now = Instant::now();
             let mut committed_transactions = HashSet::new();
 
             // TODO: lots of repeated code here
@@ -252,30 +253,14 @@ impl ExecutionPipeline {
                     .filter(|window_block| window_block.round() == pipelined_block.round() - 1)
                     .for_each(|b| {
                         info!(
-                        "Execution: Waiting for committed transactions at block {} for block {}",
-                        b.round(),
-                        pipelined_block.round()
-                    );
+                            "Execution: Waiting for committed transactions at block {} for block {}",
+                            b.round(),
+                            pipelined_block.round()
+                        );
                         for txn_hash in b.wait_for_committed_transactions() {
                             committed_transactions.insert(*txn_hash);
                         }
                     });
-            });
-
-            let input_txns = monitor!("execute_filter_input_committed_transactions", {
-                let prev_input_txns_len = input_txns.len();
-                let input_txns: Vec<_> = input_txns
-                    .into_iter()
-                    .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
-                    .collect();
-                info!(
-                    "Execution: Filtered out {}/{} transactions from the previous block for block {}, in {} ms",
-                    prev_input_txns_len - input_txns.len(),
-                    prev_input_txns_len,
-                    pipelined_block.round(),
-                    now.elapsed().as_millis()
-                );
-                input_txns
             });
 
             let block = monitor!("execute_filter_block_committed_transactions", {
@@ -354,6 +339,21 @@ impl ExecutionPipeline {
                 ExecutableBlock::new(block.block_id, transactions)
             });
 
+            let input_txns = monitor!("execute_filter_input_committed_transactions", {
+                let prev_input_txns_len = input_txns.len();
+                let input_txns: Vec<_> = input_txns
+                    .into_iter()
+                    .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
+                    .collect();
+                info!(
+                    "Execution: Filtered out {}/{} transactions from the previous block for block {}",
+                    prev_input_txns_len - input_txns.len(),
+                    prev_input_txns_len,
+                    pipelined_block.round()
+                );
+                input_txns
+            });
+
             let executor = executor.clone();
             let state_checkpoint_output = monitor!(
                 "execute_block",
@@ -419,6 +419,13 @@ impl ExecutionPipeline {
                     lifetime_guard,
                 })
                 .expect("Failed to send block to ledger_apply stage.");
+
+            info!(
+                "execute_stage for block ({},{}) took {} ms",
+                pipelined_block.epoch(),
+                pipelined_block.round(),
+                now.elapsed().as_millis()
+            );
         }
         debug!("execute_stage quitting.");
     }
