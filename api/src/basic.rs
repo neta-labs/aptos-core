@@ -10,9 +10,14 @@ use crate::{
 };
 use anyhow::Context as AnyhowContext;
 use aptos_api_types::AptosErrorCode;
-use poem_openapi::{param::Query, payload::Html, Object, OpenApi};
+use poem_openapi::{
+    param::Query,
+    payload::{Html, Json},
+    Object, OpenApi,
+};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     ops::Sub,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -58,6 +63,56 @@ impl BasicApi {
     )]
     async fn spec(&self) -> Html<String> {
         Html(OPEN_API_HTML.to_string())
+    }
+
+    /// Show some basic info of the node.
+    #[oai(
+        path = "/info",
+        method = "get",
+        operation_id = "info",
+        tag = "ApiTags::General"
+    )]
+    async fn info(&self) -> Json<HashMap<String, String>> {
+        let mut info = HashMap::new();
+        info.insert(
+            "Bootstrapping Mode".to_string(),
+            format!(
+                "{:?}",
+                self.context
+                    .node_config
+                    .state_sync
+                    .state_sync_driver
+                    .bootstrapping_mode
+            ),
+        );
+        info.insert(
+            "Continuous Syncing Mode".to_string(),
+            format!(
+                "{:?}",
+                self.context
+                    .node_config
+                    .state_sync
+                    .state_sync_driver
+                    .continuous_syncing_mode
+            ),
+        );
+        info.insert(
+            "New Storage Format".to_string(),
+            format!(
+                "{:?}",
+                self.context
+                    .node_config
+                    .storage
+                    .rocksdb_configs
+                    .enable_storage_sharding
+            ),
+        );
+        info.insert(
+            "Internal Indexer Config".to_string(),
+            format!("{:?}", self.context.node_config.indexer_db_config),
+        );
+
+        Json(info)
     }
 
     /// Check basic node health
