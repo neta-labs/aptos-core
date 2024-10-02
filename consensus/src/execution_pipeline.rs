@@ -262,7 +262,7 @@ impl ExecutionPipeline {
                     });
             });
 
-            let (input_txns, block) = monitor!("execute_filter_committed_transactions", {
+            let input_txns = monitor!("execute_filter_input_committed_transactions", {
                 let prev_input_txns_len = input_txns.len();
                 let input_txns: Vec<_> = input_txns
                     .into_iter()
@@ -275,7 +275,10 @@ impl ExecutionPipeline {
                     pipelined_block.round(),
                     now.elapsed().as_millis()
                 );
+                input_txns
+            });
 
+            let block = monitor!("execute_filter_block_committed_transactions", {
                 // TODO: Find a better way to do this.
                 let (mut txns, blocking_txns_provider) = match block.transactions {
                     ExecutableTransactions::Unsharded(txns) => {
@@ -315,7 +318,9 @@ impl ExecutionPipeline {
                             };
                             matches!(txn, UserTransaction(_))
                         }) {
+                            let timer = Instant::now();
                             let validator_txns: Vec<_> = txns.drain(0..first_user_txn_idx).collect();
+                            info!("Execution: Split validator txns from user txns in {} micros", timer.elapsed().as_micros());
                             let shuffle_iterator = crate::transaction_shuffler::use_case_aware::iterator::ShuffledTransactionIterator::new(crate::transaction_shuffler::use_case_aware::Config {
                                 sender_spread_factor: 32,
                                 platform_use_case_spread_factor: 0,
@@ -327,6 +332,14 @@ impl ExecutionPipeline {
                                 .enumerate()
                             {
                                 blocking_txns_writer.set_txn(idx as TxnIndex, txn);
+                                if idx % 10 == 0 || idx < 10 {
+                                    info!(
+                                        "Execution: Shuffled and set txn {} in {} micros",
+                                        idx,
+                                        timer.elapsed().as_micros()
+                                    );
+
+                                }
                             }
                         } else {
                             // No user transactions in the block.
@@ -338,8 +351,7 @@ impl ExecutionPipeline {
                 });
                 let transactions =
                     ExecutableTransactions::UnshardedBlocking(blocking_txns_provider);
-                let block = ExecutableBlock::new(block.block_id, transactions);
-                (input_txns, block)
+                ExecutableBlock::new(block.block_id, transactions)
             });
 
             let executor = executor.clone();
@@ -368,31 +380,33 @@ impl ExecutionPipeline {
             )
             .expect("Failed to spawn_blocking.");
 
-            if let Ok((output, _)) = &state_checkpoint_output {
-                // Block metadata + validator transactions
-                let num_system_txns = 1 + pipelined_block
-                    .validator_txns()
-                    .map_or(0, |txns| txns.len());
-                let committed_transactions: Vec<_> = zip(
-                    input_txns.iter(),
-                    output
-                        .txns
-                        .statuses_for_input_txns
-                        .iter()
-                        .skip(num_system_txns),
-                )
-                .filter_map(|(input_txn, txn_status)| {
-                    if let TransactionStatus::Keep(_) = txn_status {
-                        Some(input_txn.committed_hash())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-                pipelined_block.set_committed_transactions(committed_transactions);
-            } else {
-                pipelined_block.cancel_committed_transactions();
-            }
+            monitor!("execute_update_committed_transactions", {
+                if let Ok((output, _)) = &state_checkpoint_output {
+                    // Block metadata + validator transactions
+                    let num_system_txns = 1 + pipelined_block
+                        .validator_txns()
+                        .map_or(0, |txns| txns.len());
+                    let committed_transactions: Vec<_> = zip(
+                        input_txns.iter(),
+                        output
+                            .txns
+                            .statuses_for_input_txns
+                            .iter()
+                            .skip(num_system_txns),
+                    )
+                    .filter_map(|(input_txn, txn_status)| {
+                        if let TransactionStatus::Keep(_) = txn_status {
+                            Some(input_txn.committed_hash())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                    pipelined_block.set_committed_transactions(committed_transactions);
+                } else {
+                    pipelined_block.cancel_committed_transactions();
+                }
+            });
 
             ledger_apply_tx
                 .send(LedgerApplyCommand {
