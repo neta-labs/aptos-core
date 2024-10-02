@@ -223,7 +223,7 @@ impl ExecutionPipeline {
         executor: Arc<dyn BlockExecutorTrait>,
     ) {
         while let Some(ExecuteBlockCommand {
-            input_txns,
+            input_txns: _,
             pipelined_block,
             block,
             block_window,
@@ -334,32 +334,8 @@ impl ExecutionPipeline {
                 ExecutableBlock::new(block.block_id, transactions)
             });
 
-            let input_txns = monitor!("execute_filter_input_committed_transactions", {
-                let txns_provider_reader = match &block.transactions {
-                    ExecutableTransactions::UnshardedBlocking(txns) => txns.clone(),
-                    ExecutableTransactions::Unsharded(_) => {
-                        unreachable!("Should have been converted to UnshardedBlocking")
-                    },
-                    ExecutableTransactions::Sharded(_) => {
-                        unreachable!("Should have been converted to UnshardedBlocking")
-                    },
-                };
-                let mut input_txns = vec![];
-                for idx in 0..txns_provider_reader.num_txns() {
-                    match txns_provider_reader.get_txn(idx as TxnIndex).as_ref() {
-                        Valid(UserTransaction(user_txn)) => {
-                            input_txns.push(user_txn.clone());
-                        },
-                        Invalid(UserTransaction(user_txn)) => {
-                            input_txns.push(user_txn.clone());
-                        },
-                        _ => {},
-                    }
-                }
-                input_txns
-            });
-
             let executor = executor.clone();
+            let transactions_cloned = block.transactions.clone();
             let state_checkpoint_output = monitor!(
                 "execute_block",
                 tokio::task::spawn_blocking(move || {
@@ -384,6 +360,31 @@ impl ExecutionPipeline {
                 .await
             )
             .expect("Failed to spawn_blocking.");
+
+            let input_txns = monitor!("execute_filter_input_committed_transactions", {
+                let txns_provider_reader = match &transactions_cloned {
+                    ExecutableTransactions::UnshardedBlocking(txns) => txns.clone(),
+                    ExecutableTransactions::Unsharded(_) => {
+                        unreachable!("Should have been converted to UnshardedBlocking")
+                    },
+                    ExecutableTransactions::Sharded(_) => {
+                        unreachable!("Should have been converted to UnshardedBlocking")
+                    },
+                };
+                let mut input_txns = vec![];
+                for idx in 0..txns_provider_reader.num_txns() {
+                    match txns_provider_reader.get_txn(idx as TxnIndex).as_ref() {
+                        Valid(UserTransaction(user_txn)) => {
+                            input_txns.push(user_txn.clone());
+                        },
+                        Invalid(UserTransaction(user_txn)) => {
+                            input_txns.push(user_txn.clone());
+                        },
+                        _ => {},
+                    }
+                }
+                input_txns
+            });
 
             monitor!("execute_update_committed_transactions", {
                 if let Ok((output, _)) = &state_checkpoint_output {
