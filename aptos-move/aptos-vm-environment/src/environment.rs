@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use crate::{
     gas::get_gas_parameters,
     natives::aptos_natives_with_builder,
@@ -24,6 +25,7 @@ use aptos_types::{
 use aptos_vm_types::storage::StorageGasParameters;
 use move_vm_runtime::{config::VMConfig, use_loader_v1_based_on_env, RuntimeEnvironment, WithRuntimeEnvironment, Module};
 use std::sync::Arc;
+use crossbeam::utils::CachePadded;
 use once_cell::sync::Lazy;
 use aptos_types::executable::ModulePath;
 use aptos_types::state_store::state_key::StateKey;
@@ -255,7 +257,7 @@ impl Environment {
 
 struct ModuleCache {
     invalidated: bool,
-    modules: HashMap<StateKey, Arc<ModuleStorageEntry>>,
+    modules: HashMap<StateKey, CachePadded<Arc<ModuleStorageEntry>>>,
 }
 
 impl ModuleCache {
@@ -303,7 +305,7 @@ impl ModuleCache {
         for (addr, name) in locally_verified_module.immediate_dependencies_iter() {
             let dep_key = StateKey::from_address_and_module_name(addr, name);
             let dep_entry = match self.modules.get(&dep_key) {
-                Some(dep_entry) => dep_entry.clone(),
+                Some(dep_entry) => dep_entry.deref().clone(),
                 None => {
                     let k = K::from_address_and_module_name(addr, name);
                     let sv = base_view
@@ -345,7 +347,7 @@ impl ModuleCache {
         let verified_entry = Arc::new(entry.make_verified(module.clone()));
         self.modules.insert(
             StateKey::from_address_and_module_name(address, module_name),
-            verified_entry,
+            CachePadded::new(verified_entry),
         );
         Ok(module)
     }
@@ -406,12 +408,12 @@ impl CrossBlockModuleCache {
     }
 
     fn get_module_storage_entry(&self, state_key: &StateKey) -> Option<Arc<ModuleStorageEntry>> {
-        self.0.read().modules.get(state_key).cloned()
+        self.0.read().modules.get(state_key).map(|m| m.deref().clone())
     }
 
     fn store_module_storage_entry(&self, state_key: StateKey, entry: Arc<ModuleStorageEntry>) {
         let mut modules = self.0.write();
-        modules.modules.insert(state_key, entry);
+        modules.modules.insert(state_key, CachePadded::new(entry));
     }
 }
 
