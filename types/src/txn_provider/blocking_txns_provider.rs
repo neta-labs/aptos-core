@@ -5,6 +5,7 @@ use crate::{
     transaction::BlockExecutableTransaction as Transaction,
     txn_provider::{TxnIndex, TxnProvider},
 };
+use once_cell::sync::OnceCell;
 use std::sync::{Arc, Condvar, Mutex};
 
 #[allow(dead_code)]
@@ -35,28 +36,19 @@ impl<T: Transaction> Default for BlockingTransaction<T> {
 }
 
 pub struct BlockingTxnsProvider<T: Transaction> {
-    txns: Vec<BlockingTransaction<T>>,
+    txns: Vec<OnceCell<Arc<T>>>,
 }
 
 #[allow(dead_code)]
-impl<T: Transaction> BlockingTxnsProvider<T> {
-    pub fn new(txns: Vec<BlockingTransaction<T>>) -> Self {
+impl<T: Transaction + std::fmt::Debug> BlockingTxnsProvider<T> {
+    pub fn new(num_txns: usize) -> Self {
+        let txns: Vec<_> = (0..num_txns).map(|_| OnceCell::new()).collect();
         Self { txns }
     }
 
     pub fn set_txn(&self, idx: TxnIndex, txn: T) {
         let blocking_txn = &self.txns[idx as usize];
-        let (lock, cvar) = (&blocking_txn.txn, &blocking_txn.cvar);
-        let mut status = lock.lock().unwrap();
-        match &*status {
-            BlockingTransactionStatus::Waiting => {
-                *status = BlockingTransactionStatus::Ready(Arc::new(txn));
-                cvar.notify_all();
-            },
-            BlockingTransactionStatus::Ready(_) => {
-                panic!("Trying to add a txn that is already present");
-            },
-        }
+        blocking_txn.set(Arc::new(txn)).unwrap();
     }
 }
 
@@ -67,14 +59,7 @@ impl<T: Transaction> TxnProvider<T> for BlockingTxnsProvider<T> {
 
     fn get_txn(&self, idx: TxnIndex) -> Arc<T> {
         let txn = &self.txns[idx as usize];
-        let mut status = txn.txn.lock().unwrap();
-        while let BlockingTransactionStatus::Waiting = *status {
-            status = txn.cvar.wait(status).unwrap();
-        }
-        match *status {
-            BlockingTransactionStatus::Ready(ref txn) => txn.clone(),
-            BlockingTransactionStatus::Waiting => panic!("Unexpected status"),
-        }
+        txn.wait().clone()
     }
 
     fn to_vec(&self) -> Vec<T> {

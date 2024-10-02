@@ -37,10 +37,7 @@ use aptos_types::{
         Transaction::UserTransaction,
         TransactionStatus,
     },
-    txn_provider::{
-        blocking_txns_provider::{BlockingTransaction, BlockingTxnsProvider},
-        TxnIndex,
-    },
+    txn_provider::{blocking_txns_provider::BlockingTxnsProvider, TxnIndex},
 };
 use fail::fail_point;
 use futures::future::BoxFuture;
@@ -277,12 +274,10 @@ impl ExecutionPipeline {
                                 }
                             })
                             .collect();
-                        let blocking_txns: Vec<_> = (0..transactions.len())
-                            .map(|_| BlockingTransaction::new())
-                            .collect();
+                        let transactions_len = transactions.len();
                         (
                             transactions,
-                            Arc::new(BlockingTxnsProvider::new(blocking_txns)),
+                            Arc::new(BlockingTxnsProvider::new(transactions_len)),
                         )
                     },
                     ExecutableTransactions::UnshardedBlocking(_) => {
