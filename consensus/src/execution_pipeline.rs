@@ -37,7 +37,7 @@ use aptos_types::{
         Transaction::UserTransaction,
         TransactionStatus,
     },
-    txn_provider::{blocking_txns_provider::BlockingTxnsProvider, TxnIndex},
+    txn_provider::{blocking_txns_provider::BlockingTxnsProvider, TxnIndex, TxnProvider},
 };
 use fail::fail_point;
 use futures::future::BoxFuture;
@@ -335,17 +335,27 @@ impl ExecutionPipeline {
             });
 
             let input_txns = monitor!("execute_filter_input_committed_transactions", {
-                let prev_input_txns_len = input_txns.len();
-                let input_txns: Vec<_> = input_txns
-                    .into_iter()
-                    .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
-                    .collect();
-                info!(
-                    "Execution: Filtered out {}/{} transactions from the previous block for block {}",
-                    prev_input_txns_len - input_txns.len(),
-                    prev_input_txns_len,
-                    pipelined_block.round()
-                );
+                let txns_provider_reader = match &block.transactions {
+                    ExecutableTransactions::UnshardedBlocking(txns) => txns.clone(),
+                    ExecutableTransactions::Unsharded(_) => {
+                        unreachable!("Should have been converted to UnshardedBlocking")
+                    },
+                    ExecutableTransactions::Sharded(_) => {
+                        unreachable!("Should have been converted to UnshardedBlocking")
+                    },
+                };
+                let mut input_txns = vec![];
+                for idx in 0..txns_provider_reader.num_txns() {
+                    match txns_provider_reader.get_txn(idx as TxnIndex).as_ref() {
+                        Valid(UserTransaction(user_txn)) => {
+                            input_txns.push(user_txn.clone());
+                        },
+                        Invalid(UserTransaction(user_txn)) => {
+                            input_txns.push(user_txn.clone());
+                        },
+                        _ => {},
+                    }
+                }
                 input_txns
             });
 
