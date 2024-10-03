@@ -260,106 +260,105 @@ impl ExecutionPipeline {
                     });
             });
 
-            let block = monitor!("execute_filter_block_committed_transactions", {
-                // TODO: Find a better way to do this.
-                let (mut txns, blocking_txns_provider) = match block.transactions {
-                    ExecutableTransactions::Unsharded(txns) => {
-                        let transactions: Vec<_> = txns
-                            .into_iter()
-                            .filter(|txn| {
-                                if let Valid(UserTransaction(user_txn)) = txn {
-                                    !committed_transactions.contains(&user_txn.committed_hash())
-                                } else {
-                                    true
-                                }
-                            })
-                            .collect();
-                        let transactions_len = transactions.len();
-                        (
-                            transactions,
-                            Arc::new(BlockingTxnsProvider::new(transactions_len)),
-                        )
-                    },
-                    ExecutableTransactions::UnshardedBlocking(_) => {
-                        unimplemented!("Not expecting this yet.")
-                    },
-                    ExecutableTransactions::Sharded(_) => {
-                        unimplemented!("Sharded transactions are not supported yet.")
-                    },
-                };
-                let blocking_txns_writer = blocking_txns_provider.clone();
-                tokio::spawn(async move {
-                    tokio::task::spawn_blocking(move || {
-                        // TODO: keep this previously split so we don't have to re-split it here
-                        if let Some((first_user_txn_idx, _)) = txns.iter().find_position(|txn| {
-                            let txn = match txn {
-                                Valid(txn) => txn,
-                                Invalid(txn) => txn,
-                            };
-                            matches!(txn, UserTransaction(_))
-                        }) {
-                            let timer = Instant::now();
-                            let validator_txns: Vec<_> = txns.drain(0..first_user_txn_idx).collect();
-                            info!("Execution: Split validator txns from user txns in {} micros", timer.elapsed().as_micros());
-                            let shuffle_iterator = crate::transaction_shuffler::use_case_aware::iterator::ShuffledTransactionIterator::new(crate::transaction_shuffler::use_case_aware::Config {
-                                sender_spread_factor: 32,
-                                platform_use_case_spread_factor: 0,
-                                user_use_case_spread_factor: 4,
-                            }).extended_with(txns);
-                            for (idx, txn) in validator_txns
+            let (mut txns, blocking_txns_provider) =
+                monitor!("execute_filter_block_committed_transactions", {
+                    // TODO: Find a better way to do this.
+                    match block.transactions {
+                        ExecutableTransactions::Unsharded(txns) => {
+                            let transactions: Vec<_> = txns
                                 .into_iter()
-                                .chain(shuffle_iterator)
-                                .enumerate()
-                            {
-                                blocking_txns_writer.set_txn(idx as TxnIndex, txn);
-                                if idx % 10 == 0 || idx < 10 {
-                                    info!(
-                                        "Execution: Shuffled and set txn {} in {} micros",
-                                        idx,
-                                        timer.elapsed().as_micros()
-                                    );
-
-                                }
-                            }
-                        } else {
-                            // No user transactions in the block.
-                            for (idx, txn) in txns.into_iter().enumerate() {
-                                blocking_txns_writer.set_txn(idx as TxnIndex, txn);
-                            }
-                        }
-                    }).await.expect("Failed to spawn_blocking.");
+                                .filter(|txn| {
+                                    if let Valid(UserTransaction(user_txn)) = txn {
+                                        !committed_transactions.contains(&user_txn.committed_hash())
+                                    } else {
+                                        true
+                                    }
+                                })
+                                .collect();
+                            let transactions_len = transactions.len();
+                            (
+                                transactions,
+                                Arc::new(BlockingTxnsProvider::new(transactions_len)),
+                            )
+                        },
+                        ExecutableTransactions::UnshardedBlocking(_) => {
+                            unimplemented!("Not expecting this yet.")
+                        },
+                        ExecutableTransactions::Sharded(_) => {
+                            unimplemented!("Sharded transactions are not supported yet.")
+                        },
+                    }
                 });
-                let transactions =
-                    ExecutableTransactions::UnshardedBlocking(blocking_txns_provider);
-                ExecutableBlock::new(block.block_id, transactions)
+
+            let blocking_txns_writer = blocking_txns_provider.clone();
+            let join_shuffle = tokio::task::spawn_blocking(move || {
+                // TODO: keep this previously split so we don't have to re-split it here
+                if let Some((first_user_txn_idx, _)) = txns.iter().find_position(|txn| {
+                    let txn = match txn {
+                        Valid(txn) => txn,
+                        Invalid(txn) => txn,
+                    };
+                    matches!(txn, UserTransaction(_))
+                }) {
+                    let timer = Instant::now();
+                    let validator_txns: Vec<_> = txns.drain(0..first_user_txn_idx).collect();
+                    info!(
+                        "Execution: Split validator txns from user txns in {} micros",
+                        timer.elapsed().as_micros()
+                    );
+                    let shuffle_iterator = crate::transaction_shuffler::use_case_aware::iterator::ShuffledTransactionIterator::new(crate::transaction_shuffler::use_case_aware::Config {
+                            sender_spread_factor: 32,
+                            platform_use_case_spread_factor: 0,
+                            user_use_case_spread_factor: 4,
+                        }).extended_with(txns);
+                    for (idx, txn) in validator_txns
+                        .into_iter()
+                        .chain(shuffle_iterator)
+                        .enumerate()
+                    {
+                        blocking_txns_writer.set_txn(idx as TxnIndex, txn);
+                        // if idx % 10 == 0 || idx < 10 {
+                        //     info!(
+                        //         "Execution: Shuffled and set txn {} in {} micros",
+                        //         idx,
+                        //         timer.elapsed().as_micros()
+                        //     );
+                        //
+                        // }
+                    }
+                } else {
+                    // No user transactions in the block.
+                    for (idx, txn) in txns.into_iter().enumerate() {
+                        blocking_txns_writer.set_txn(idx as TxnIndex, txn);
+                    }
+                }
             });
+            let transactions = ExecutableTransactions::UnshardedBlocking(blocking_txns_provider);
+            let transactions_cloned = transactions.clone();
+            let block = ExecutableBlock::new(block.block_id, transactions);
 
             let executor = executor.clone();
-            let transactions_cloned = block.transactions.clone();
-            let state_checkpoint_output = monitor!(
-                "execute_block",
-                tokio::task::spawn_blocking(move || {
-                    fail_point!("consensus::compute", |_| {
-                        Err(ExecutorError::InternalError {
-                            error: "Injected error in compute".into(),
-                        })
-                    });
-                    let start = Instant::now();
-                    info!("execute_and_state_checkpoint start. {}", block_id);
-                    executor
-                        .execute_and_state_checkpoint(
-                            block,
-                            parent_block_id,
-                            block_executor_onchain_config,
-                        )
-                        .map(|output| {
-                            info!("execute_and_state_checkpoint end. {}", block_id);
-                            (output, start.elapsed())
-                        })
-                })
-                .await
-            )
-            .expect("Failed to spawn_blocking.");
+            let join_execute = tokio::task::spawn_blocking(move || {
+                fail_point!("consensus::compute", |_| {
+                    Err(ExecutorError::InternalError {
+                        error: "Injected error in compute".into(),
+                    })
+                });
+                let start = Instant::now();
+                info!("execute_and_state_checkpoint start. {}", block_id);
+                executor
+                    .execute_and_state_checkpoint(
+                        block,
+                        parent_block_id,
+                        block_executor_onchain_config,
+                    )
+                    .map(|output| {
+                        info!("execute_and_state_checkpoint end. {}", block_id);
+                        (output, start.elapsed())
+                    })
+            });
+
+            join_shuffle.await.expect("Failed to join_shuffle.");
 
             let input_txns = monitor!("execute_filter_input_committed_transactions", {
                 let txns_provider_reader = match &transactions_cloned {
@@ -385,6 +384,9 @@ impl ExecutionPipeline {
                 }
                 input_txns
             });
+
+            let state_checkpoint_output =
+                monitor!("execute_block", join_execute.await).expect("Failed to join_execute.");
 
             monitor!("execute_update_committed_transactions", {
                 if let Ok((output, _)) = &state_checkpoint_output {

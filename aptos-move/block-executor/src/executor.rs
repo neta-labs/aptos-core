@@ -6,7 +6,7 @@ use crate::{
     counters,
     counters::{
         PARALLEL_EXECUTION_SECONDS, RAYON_EXECUTION_SECONDS, TASK_EXECUTE_SECONDS,
-        TASK_VALIDATE_SECONDS, TXN_GET_SECONDS, VM_INIT_SECONDS, WORK_WITH_TASK_SECONDS,
+        TASK_VALIDATE_SECONDS, VM_INIT_SECONDS, WORK_WITH_TASK_SECONDS,
     },
     errors::*,
     executor_utilities::*,
@@ -112,18 +112,19 @@ where
         parallel_state: ParallelState<T, X>,
     ) -> Result<bool, PanicOr<ParallelBlockExecutionError>> {
         let _timer = TASK_EXECUTE_SECONDS.start_timer();
-        let txn_get_timer = TXN_GET_SECONDS.start_timer();
+        // let txn_get_timer = TXN_GET_SECONDS.start_timer();
         let txn = &signature_verified_block.get_txn(idx_to_execute);
-        let elapsed = txn_get_timer.stop_and_record();
-        if idx_to_execute < 10
-            || (idx_to_execute < 1000 && idx_to_execute % 10 == 0)
-            || idx_to_execute % 1000 == 0
-        {
-            info!(
-                "[Execution] At txn {}, get_txn took: {:.2e} s",
-                idx_to_execute, elapsed
-            )
-        }
+        // txn_get_timer.observe_duration();
+        // let elapsed = txn_get_timer.stop_and_record();
+        // if idx_to_execute < 10
+        //     || (idx_to_execute < 1000 && idx_to_execute % 10 == 0)
+        //     || idx_to_execute % 1000 == 0
+        // {
+        //     info!(
+        //         "[Execution] At txn {}, get_txn took: {:.2e} s",
+        //         idx_to_execute, elapsed
+        //     )
+        // }
 
         // VM execution.
         let sync_view = LatestView::new(base_view, ViewState::Sync(parallel_state), idx_to_execute);
