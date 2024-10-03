@@ -504,7 +504,11 @@ impl BatchProofQueue {
         let mut cur_all_txns = PayloadTxnsSize::zero();
         let mut excluded_txns = 0;
         let mut full = false;
-        let filtered_txns = DashSet::new();
+        let num_all_txns = excluded_batches
+            .iter()
+            .map(|batch| batch.num_txns() as usize)
+            .sum();
+        let filtered_txns = DashSet::with_capacity(num_all_txns);
         excluded_batches.par_iter().for_each(|batch_info| {
             let batch_key = BatchKey::from_info(batch_info);
             if let Some(txn_summaries) = self
