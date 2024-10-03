@@ -14,7 +14,9 @@ use aptos_consensus_types::{
 };
 use aptos_logger::{info, sample, sample::SampleRate, warn};
 use aptos_types::{transaction::SignedTransaction, PeerId};
+use dashmap::DashSet;
 use rand::{prelude::SliceRandom, thread_rng};
+use rayon::prelude::*;
 use std::{
     cmp::Reverse,
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
@@ -502,9 +504,8 @@ impl BatchProofQueue {
         let mut cur_all_txns = PayloadTxnsSize::zero();
         let mut excluded_txns = 0;
         let mut full = false;
-        // Set of all the excluded transactions and all the transactions included in the result
-        let mut filtered_txns = HashSet::new();
-        for batch_info in excluded_batches {
+        let filtered_txns = DashSet::new();
+        excluded_batches.par_iter().for_each(|batch_info| {
             let batch_key = BatchKey::from_info(batch_info);
             if let Some(txn_summaries) = self
                 .items
@@ -515,7 +516,7 @@ impl BatchProofQueue {
                     filtered_txns.insert(*txn_summary);
                 }
             }
-        }
+        });
         info!(
             "Pull payloads from QuorumStore: building filtered_txns took {} ms",
             start_time.elapsed().as_millis()
