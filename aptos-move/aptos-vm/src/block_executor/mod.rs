@@ -44,6 +44,8 @@ use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
 };
+use aptos_block_executor::cross_block_caches::maybe_initialize_module_cache;
+use move_vm_runtime::WithRuntimeEnvironment;
 
 pub static RAYON_EXEC_POOL: Lazy<Arc<rayon::ThreadPool>> = Lazy::new(|| {
     Arc::new(
@@ -411,6 +413,8 @@ impl BlockAptosVM {
 
         let environment =
             CachedAptosEnvironment::fetch_with_delayed_field_optimization_enabled(state_view);
+        maybe_initialize_module_cache(state_view, environment.runtime_environment());
+
         let ret = executor.execute_block(environment, signature_verified_block, state_view);
         match ret {
             Ok(block_output) => {

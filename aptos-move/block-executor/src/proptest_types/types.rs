@@ -47,6 +47,7 @@ use std::{
         Arc,
     },
 };
+use aptos_types::state_store::state_key::StateKey;
 
 // Should not be possible to overflow or underflow, as each delta is at most 100 in the tests.
 // TODO: extend to delta failures.
@@ -158,6 +159,10 @@ pub(crate) struct KeyType<K: Hash + Clone + Debug + PartialOrd + Ord + Eq>(
 impl<K: Hash + Clone + Debug + Eq + PartialOrd + Ord> ModulePath for KeyType<K> {
     fn is_module_path(&self) -> bool {
         self.1
+    }
+
+    fn as_state_key(&self) -> &StateKey {
+        unimplemented!()
     }
 
     fn from_address_and_module_name(_address: &AccountAddress, _module_name: &IdentStr) -> Self {

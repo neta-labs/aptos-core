@@ -9,7 +9,7 @@ use crate::{
 use bytes::Bytes;
 use move_binary_format::{errors::VMResult, CompiledModule};
 use move_core_types::metadata::Metadata;
-use move_vm_runtime::{Module, RuntimeEnvironment};
+use move_vm_runtime::{Module, module_hash, RuntimeEnvironment};
 use std::{fmt::Debug, sync::Arc};
 
 /// An interface that any module storage entry in the code cache must implement.
@@ -92,6 +92,18 @@ impl ModuleStorageEntry {
                 e
             ))
         })
+    }
+
+    pub fn from_state_value_and_verified_module(state_value: StateValue, module: Arc<Module>) -> Self {
+        let (state_value_metadata, serialized_module) = state_value.unpack();
+        let hash = module_hash(&serialized_module);
+
+        Self {
+            serialized_module,
+            hash,
+            state_value_metadata,
+            representation: Representation::Verified(module),
+        }
     }
 
     /// Creates a new module storage entry which carries all additional metadata, but uses a

@@ -28,6 +28,12 @@ use move_core_types::{
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 
+pub fn module_hash(bytes: &Bytes) -> [u8; 32] {
+    let mut sha3_256 = Sha3_256::new();
+    sha3_256.update(bytes);
+    sha3_256.finalize().into()
+}
+
 /// [MoveVM] runtime environment encapsulating different configurations. Shared between the VM and
 /// the code cache, possibly across multiple threads.
 pub struct RuntimeEnvironment {
