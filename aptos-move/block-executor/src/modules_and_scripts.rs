@@ -8,7 +8,7 @@ use crate::{
     },
     view::{LatestView, ViewState},
 };
-use aptos_mvhashmap::versioned_module_storage::{ModuleStorageRead, ModuleVersion};
+use aptos_mvhashmap::versioned_module_storage::{get_cached, ModuleStorageRead, ModuleVersion};
 use aptos_types::{
     executable::{Executable, ModulePath},
     state_store::{state_value::StateValueMetadata, TStateView},
@@ -31,6 +31,7 @@ use move_vm_runtime::{
 };
 use move_vm_types::{module_cyclic_dependency_error, module_linker_error};
 use std::{collections::HashSet, sync::Arc};
+use aptos_mvhashmap::types::StorageVersion;
 
 impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosCodeStorage<T::Key>
     for LatestView<'a, T, S, X>
@@ -47,6 +48,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosModul
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> PartialVMResult<Option<StateValueMetadata>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.state_value_metadata().clone()));
+        }
+
         Ok(self
             .read_module_storage(address, module_name)
             .map_err(|e| e.to_partial())?
@@ -55,6 +61,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosModul
     }
 
     fn fetch_module_size_by_state_key(&self, key: &Self::Key) -> PartialVMResult<Option<usize>> {
+        if let Some(entry) = get_cached(key) {
+            return Ok(Some(entry.size_in_bytes()));
+        }
+
         Ok(self
             .read_module_storage_by_key(key)
             .map_err(|e| e.to_partial())?
@@ -159,6 +169,12 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<bool> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(_) = get_cached(&key) {
+            return Ok(true);
+        }
+
+
         let exists = self
             .read_module_storage(address, module_name)?
             .into_versioned()
@@ -171,6 +187,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Bytes>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.bytes().clone()));
+        }
+
         Ok(self
             .read_module_storage(address, module_name)?
             .into_versioned()
@@ -182,6 +203,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<usize>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.size_in_bytes()));
+        }
+
         Ok(self
             .read_module_storage(address, module_name)?
             .into_versioned()
@@ -193,6 +219,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Vec<Metadata>>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.metadata().to_vec()));
+        }
+
         Ok(self
             .read_module_storage(address, module_name)?
             .into_versioned()
@@ -204,6 +235,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Arc<CompiledModule>>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.as_compiled_module()));
+        }
+
         Ok(self
             .read_module_storage(address, module_name)?
             .into_versioned()
@@ -215,6 +251,11 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Arc<Module>>> {
+        let key = T::Key::from_address_and_module_name(address, module_name);
+        if let Some(entry) = get_cached(&key) {
+            return Ok(Some(entry.try_as_verified_module().unwrap()));
+        }
+
         let _timer = FETCH_VERIFIED_MODULE_FROM_MODULE_STORAGE_SECONDS.start_timer();
 
         let (version, entry) = match self

@@ -19,7 +19,7 @@ use move_core_types::account_address::AccountAddress;
 use move_core_types::ident_str;
 use move_vm_runtime::{ModuleStorage, RuntimeEnvironment, WithRuntimeEnvironment};
 
-static MODULE_CACHE: OnceCell<Option<HashMap<StateKey, Arc<ModuleStorageEntry>>>> = OnceCell::new();
+static MODULE_CACHE: OnceCell<Option<HashMap<StateKey, ModuleStorageEntry>>> = OnceCell::new();
 
 pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment: &RuntimeEnvironment) {
     if MODULE_CACHE.get().is_some() {
@@ -114,7 +114,7 @@ pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment:
         let module = assert_ok!(module_storage.fetch_verified_module(&AccountAddress::ONE, module_name));
         if let (Some(state_value), Some(module)) = (state_value, module) {
             let entry = ModuleStorageEntry::from_state_value_and_verified_module(state_value, module);
-            framework.insert(state_key, Arc::new(entry));
+            framework.insert(state_key, entry);
         }
     }
 
@@ -123,9 +123,9 @@ pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment:
     }
 }
 
-pub(crate) fn get_cached<K: ModulePath>(key: &K) -> Option<Arc<ModuleStorageEntry>> {
+pub fn get_cached<K: ModulePath>(key: &K) -> Option<&'static ModuleStorageEntry> {
     if let Some(cache) = MODULE_CACHE.get() {
-        return cache.as_ref().unwrap().get(key.as_state_key()).cloned();
+        return cache.as_ref().unwrap().get(key.as_state_key());
     }
     None
 }
@@ -335,10 +335,6 @@ impl<K: Debug + Hash + Clone + Eq + ModulePath>
     /// returned.
     #[inline]
     fn get_impl(&self, key: &K, txn_idx: TxnIndex) -> Option<ModuleStorageRead> {
-        if let Some(entry) = get_cached(key) {
-            return Some(ModuleStorageRead::Versioned(Err(StorageVersion), entry));
-        }
-
         match self.entries.get(key) {
             Some(v) => v.get(txn_idx),
             None => None,
