@@ -495,6 +495,8 @@ impl BatchProofQueue {
         return_non_full: bool,
         block_timestamp: Duration,
     ) -> (Vec<&QueueItem>, PayloadTxnsSize, u64, bool) {
+        let start_time = Instant::now();
+
         let mut result = Vec::new();
         let mut cur_unique_txns = 0;
         let mut cur_all_txns = PayloadTxnsSize::zero();
@@ -514,6 +516,10 @@ impl BatchProofQueue {
                 }
             }
         }
+        info!(
+            "Pull payloads from QuorumStore: building filtered_txns took {} ms",
+            start_time.elapsed().as_millis()
+        );
 
         let mut iters = vec![];
         for (_, batches) in self.author_to_batches.iter() {
@@ -607,6 +613,7 @@ impl BatchProofQueue {
             result_count = result.len(),
             full = full,
             return_non_full = return_non_full,
+            elapsed_time_ms = start_time.elapsed().as_millis() as u64,
             "Pull payloads from QuorumStore: internal"
         );
 
