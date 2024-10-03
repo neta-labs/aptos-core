@@ -31,8 +31,6 @@ use move_vm_runtime::{
 };
 use move_vm_types::{module_cyclic_dependency_error, module_linker_error};
 use std::{collections::HashSet, sync::Arc};
-use aptos_mvhashmap::types::StorageVersion;
-use crate::cross_block_caches::get_cached;
 
 impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosCodeStorage<T::Key>
     for LatestView<'a, T, S, X>
@@ -271,12 +269,8 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
     fn read_module_storage_by_key(
         &self,
         key: &T::Key,
-    ) -> VMResult<ModuleStorageRead<ModuleStorageEntry>> {
+    ) -> VMResult<ModuleStorageRead> {
         let _timer = READ_MODULE_ENTRY_FROM_MODULE_STORAGE_SECONDS.start_timer();
-
-        if let Some(entry) = get_cached(key) {
-            return Ok(ModuleStorageRead::Versioned(Err(StorageVersion), entry));
-        }
 
         match &self.latest_view {
             ViewState::Sync(state) => {
@@ -325,7 +319,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
         &self,
         address: &AccountAddress,
         module_name: &IdentStr,
-    ) -> VMResult<ModuleStorageRead<ModuleStorageEntry>> {
+    ) -> VMResult<ModuleStorageRead> {
         let key = T::Key::from_address_and_module_name(address, module_name);
         self.read_module_storage_by_key(&key)
     }

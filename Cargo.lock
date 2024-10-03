@@ -2923,6 +2923,7 @@ dependencies = [
  "aptos-crypto",
  "aptos-types",
  "aptos-vm-types",
+ "arc-swap",
  "bytes",
  "claims",
  "crossbeam",
