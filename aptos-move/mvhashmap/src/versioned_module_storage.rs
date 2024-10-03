@@ -118,12 +118,16 @@ pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment:
         }
     }
 
-    MODULE_CACHE.set(Some(framework)).unwrap();
+    if !framework.is_empty() {
+        MODULE_CACHE.set(Some(framework)).unwrap();
+    }
 }
 
 pub(crate) fn get_cached<K: ModulePath>(key: &K) -> Option<Arc<ModuleStorageEntry>> {
-    let cache = MODULE_CACHE.get().unwrap().as_ref().unwrap();
-    cache.get(key.as_state_key()).cloned()
+    if let Some(cache) = MODULE_CACHE.get() {
+        return cache.as_ref().unwrap().get(key.as_state_key()).cloned();
+    }
+    None
 }
 
 /// Represents a version of a module - either written by some transaction, or fetched from storage.
