@@ -32,7 +32,7 @@ use move_vm_runtime::{
 use move_vm_types::{module_cyclic_dependency_error, module_linker_error};
 use std::{collections::HashSet, sync::Arc};
 use aptos_mvhashmap::types::StorageVersion;
-use crate::cross_block_caches::get_cached;
+use crate::cross_block_caches::{get_from_global_cache, store_to_global_cache};
 
 impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosCodeStorage<T::Key>
     for LatestView<'a, T, S, X>
@@ -274,7 +274,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
     ) -> VMResult<ModuleStorageRead<ModuleStorageEntry>> {
         let _timer = READ_MODULE_ENTRY_FROM_MODULE_STORAGE_SECONDS.start_timer();
 
-        if let Some(entry) = get_cached(key) {
+        if let Some(entry) = get_from_global_cache(key) {
             return Ok(ModuleStorageRead::Versioned(Err(StorageVersion), entry));
         }
 
@@ -419,11 +419,13 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
                         key.clone(),
                         ModuleStorageRead::Versioned(version.clone(), verified_entry.clone()),
                     );
-                state
-                    .versioned_map
-                    .code_storage()
-                    .module_storage()
-                    .write_if_not_verified(&key, version, verified_entry);
+                if store_to_global_cache(&key, Some(verified_entry.clone())) {
+                    state
+                        .versioned_map
+                        .code_storage()
+                        .module_storage()
+                        .write_if_not_verified(&key, version, verified_entry);
+                }
             },
             ViewState::Unsync(state) => {
                 state

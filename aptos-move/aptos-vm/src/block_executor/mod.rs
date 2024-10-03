@@ -413,7 +413,7 @@ impl BlockAptosVM {
 
         let environment =
             CachedAptosEnvironment::fetch_with_delayed_field_optimization_enabled(state_view);
-        maybe_initialize_module_cache(state_view, environment.runtime_environment());
+        maybe_initialize_module_cache();
 
         let ret = executor.execute_block(environment, signature_verified_block, state_view);
         match ret {
