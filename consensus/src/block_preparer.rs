@@ -47,13 +47,35 @@ impl BlockPreparer {
     ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
         let mut txns = vec![];
         let mut futures = FuturesOrdered::new();
+        let mut block_idx = 0;
+        info!(
+            "get_transactions started in block window for ({}, {})",
+            block.epoch(),
+            block.round()
+        );
         for block in block_window
             .pipelined_blocks()
             .iter()
             .map(|b| b.block())
             .chain(std::iter::once(block))
         {
-            futures.push_back(async move { self.payload_manager.get_transactions(block).await });
+            futures.push_back(async move {
+                info!(
+                    "get_transactions for block {} in block window for ({}, {}) started.",
+                    block_idx,
+                    block.epoch(),
+                    block.round()
+                );
+                let result = self.payload_manager.get_transactions(block).await;
+                info!(
+                    "get_transactions for block {} in block window for ({}, {}) finished.",
+                    block_idx,
+                    block.epoch(),
+                    block.round()
+                );
+                result
+            });
+            block_idx += 1;
         }
         let mut max_txns_from_block_to_execute = None;
         loop {
@@ -69,6 +91,11 @@ impl BlockPreparer {
                 None => break,
             }
         }
+        info!(
+            "get_transactions finished in block window for ({}, {})",
+            block.epoch(),
+            block.round()
+        );
         Ok((txns, max_txns_from_block_to_execute))
     }
 
