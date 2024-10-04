@@ -53,11 +53,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosModul
             return Ok(Some(entry.state_value_metadata().clone()));
         }
 
-        Ok(self
-            .read_module_storage(address, module_name)
-            .map_err(|e| e.to_partial())?
-            .into_versioned()
-            .map(|(_, entry)| entry.state_value_metadata().clone()))
+        self.read_module_storage(address, module_name, |read| {
+                read.as_versioned().map(|(_, entry)| entry.state_value_metadata().clone())
+            })
+            .map_err(|e| e.to_partial())
     }
 
     fn fetch_module_size_by_state_key(&self, key: &Self::Key) -> PartialVMResult<Option<usize>> {
@@ -65,11 +64,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosModul
             return Ok(Some(entry.size_in_bytes()));
         }
 
-        Ok(self
-            .read_module_storage_by_key(key)
-            .map_err(|e| e.to_partial())?
-            .into_versioned()
-            .map(|(_, entry)| entry.bytes().len()))
+        self.read_module_storage_by_key(key, |read| {
+                read.as_versioned().map(|(_, entry)| entry.bytes().len())
+            })
+            .map_err(|e| e.to_partial())
     }
 }
 
@@ -174,11 +172,9 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(true);
         }
 
-
         let exists = self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
-            .is_some();
+            .read_module_storage(address, module_name, |read| Some(read.as_versioned().is_some()))?
+            .unwrap();
         Ok(exists)
     }
 
@@ -192,10 +188,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(Some(entry.bytes().clone()));
         }
 
-        Ok(self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
-            .map(|(_, entry)| entry.bytes().clone()))
+        self
+            .read_module_storage(address, module_name, |read| {
+                read.as_versioned().map(|(_, entry)| entry.bytes().clone())
+            })
     }
 
     fn fetch_module_size_in_bytes(
@@ -208,10 +204,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(Some(entry.size_in_bytes()));
         }
 
-        Ok(self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
-            .map(|(_, entry)| entry.bytes().len()))
+        self
+            .read_module_storage(address, module_name, |read| {
+                read.as_versioned().map(|(_, entry)| entry.bytes().len())
+            })
     }
 
     fn fetch_module_metadata(
@@ -224,10 +220,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(Some(entry.metadata().to_vec()));
         }
 
-        Ok(self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
-            .map(|(_, entry)| entry.metadata().to_vec()))
+        self
+            .read_module_storage(address, module_name, |read| {
+                read.as_versioned().map(|(_, entry)| entry.metadata().to_vec())
+            })
     }
 
     fn fetch_deserialized_module(
@@ -240,10 +236,10 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
             return Ok(Some(entry.as_compiled_module()));
         }
 
-        Ok(self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
-            .map(|(_, entry)| entry.as_compiled_module()))
+        self
+            .read_module_storage(address, module_name, |read| {
+                read.as_versioned().map(|(_, entry)| entry.as_compiled_module())
+            })
     }
 
     fn fetch_verified_module(
@@ -258,21 +254,22 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
 
         let _timer = FETCH_VERIFIED_MODULE_FROM_MODULE_STORAGE_SECONDS.start_timer();
 
-        let (version, entry) = match self
-            .read_module_storage(address, module_name)?
-            .into_versioned()
+        match self
+            .read_module_storage(address, module_name, |read| read.as_versioned().map(|(v, e)| e.try_as_verified_module()))?
         {
-            Some((version, entry)) => (version, entry),
+            Some(Some(module)) => return Ok(Some(module)),
+            Some(None) => {
+                // Entry not verified, re-read.
+            },
             None => return Ok(None),
         };
-        if let Some(module) = entry.try_as_verified_module() {
-            return Ok(Some(module));
-        }
 
+        let (version, entry) = self
+            .read_module_storage(address, module_name, |read| read.clone().into_versioned())?.unwrap();
         let mut visited = HashSet::new();
         let module = self.traversed_published_dependencies(
-            version,
-            entry,
+            version.clone(),
+            entry.clone(),
             address,
             module_name,
             &mut visited,
@@ -307,10 +304,13 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
 
     /// Returns the module storage entry built from the current view. If it is not in
     /// multi-version or non-sync data structures, fetches it from the base view.
-    fn read_module_storage_by_key(
+    fn read_module_storage_by_key<F, U>(
         &self,
         key: &T::Key,
-    ) -> VMResult<ModuleStorageRead> {
+        f: F,
+    ) -> VMResult<Option<U>>
+        where F: Fn(&ModuleStorageRead) -> Option<U>,
+    {
         let _timer = READ_MODULE_ENTRY_FROM_MODULE_STORAGE_SECONDS.start_timer();
 
         match &self.latest_view {
@@ -321,7 +321,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
                     .borrow()
                     .get_captured_module_storage_read(key)
                 {
-                    return Ok(read.clone());
+                    return Ok(f(read));
                 }
 
                 // Otherwise, we need to go to the multi-version data structure to get it, and
@@ -333,15 +333,17 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
                     .get_or_else(key, self.txn_idx, || {
                         self.get_base_module_storage_entry(key)
                     })?;
+                let return_value = f(&read);
+
                 state
                     .captured_reads
                     .borrow_mut()
-                    .capture_module_storage_read(key.clone(), read.clone());
-                Ok(read)
+                    .capture_module_storage_read(key.clone(), read);
+                Ok(return_value)
             },
             ViewState::Unsync(state) => {
                 state.read_set.borrow_mut().module_reads.insert(key.clone());
-                Ok(match state.unsync_map.fetch_module(key) {
+                let read = match state.unsync_map.fetch_module(key) {
                     // For sequential execution, indices do not matter, but we still return
                     // them to have uniform interfaces.
                     Some(entry) => ModuleStorageRead::before_txn_idx(self.txn_idx, entry),
@@ -349,20 +351,24 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
                         Some(entry) => ModuleStorageRead::storage_version(entry),
                         None => ModuleStorageRead::DoesNotExist,
                     },
-                })
+                };
+                Ok(f(&read))
             },
         }
     }
 
     /// Similar to [LatestView::read_module_storage_by_key], but allows to resolve module
     /// storage entries based on addresses and names.
-    fn read_module_storage(
+    fn read_module_storage<F, U>(
         &self,
         address: &AccountAddress,
         module_name: &IdentStr,
-    ) -> VMResult<ModuleStorageRead> {
+        f: F,
+    ) -> VMResult<Option<U>>
+        where F: Fn(&ModuleStorageRead) -> Option<U>,
+    {
         let key = T::Key::from_address_and_module_name(address, module_name);
-        self.read_module_storage_by_key(&key)
+        self.read_module_storage_by_key(&key, f)
     }
 
     /// Similar to [LatestView::read_module_storage], but in case the module does not exist,
@@ -372,8 +378,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> LatestView<
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<(ModuleVersion, Arc<ModuleStorageEntry>)> {
-        self.read_module_storage(address, module_name)?
-            .into_versioned()
+        self.read_module_storage(address, module_name, |read| read.clone().into_versioned())?
             .ok_or_else(|| module_linker_error!(address, module_name))
     }
 

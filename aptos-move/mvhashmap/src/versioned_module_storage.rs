@@ -167,6 +167,13 @@ impl ModuleStorageRead {
             Self::DoesNotExist => None,
         }
     }
+
+    pub fn as_versioned(&self) -> Option<(&ModuleVersion, &Arc<ModuleStorageEntry>)> {
+        match self {
+            Self::Versioned(v, entry) => Some((v, entry)),
+            Self::DoesNotExist => None,
+        }
+    }
 }
 
 /// Represents different versions of module storage information for different transaction indices
