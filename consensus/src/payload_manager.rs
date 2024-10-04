@@ -370,7 +370,17 @@ impl TPayloadManager for QuorumStorePayloadManager {
         &self,
         block: &Block,
     ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+        info!(
+            "get_transactions for block ({}, {}) started.",
+            block.epoch(),
+            block.round()
+        );
         let Some(payload) = block.payload() else {
+            info!(
+                "get_transactions for block ({}, {}) finished (empty).",
+                block.epoch(),
+                block.round()
+            );
             return Ok((Vec::new(), None));
         };
 
@@ -480,6 +490,12 @@ impl TPayloadManager for QuorumStorePayloadManager {
             );
             consensus_publisher.publish_message(message);
         }
+
+        info!(
+            "get_transactions for block ({}, {}) finished.",
+            block.epoch(),
+            block.round()
+        );
 
         Ok((
             transaction_payload.transactions(),
