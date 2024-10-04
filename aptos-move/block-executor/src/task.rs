@@ -8,7 +8,7 @@ use aptos_aggregator::{
 };
 use aptos_mvhashmap::types::TxnIndex;
 use aptos_types::{
-    delayed_fields::PanicError,
+    error::PanicError,
     fee_statement::FeeStatement,
     state_store::{state_value::StateValueMetadata, TStateView},
     transaction::BlockExecutableTransaction as Transaction,
@@ -16,7 +16,7 @@ use aptos_types::{
 };
 use aptos_vm_types::{
     module_and_script_storage::code_storage::TAptosCodeStorage,
-    resolver::{TExecutorView, TResourceGroupView},
+    resolver::{ResourceGroupSize, TExecutorView, TResourceGroupView},
 };
 use move_core_types::{value::MoveTypeLayout, vm_status::StatusCode};
 use move_vm_runtime::WithRuntimeEnvironment;
@@ -149,6 +149,7 @@ pub trait TransactionOutput: Send + Sync + Debug {
     ) -> Vec<(
         <Self::Txn as Transaction>::Key,
         <Self::Txn as Transaction>::Value,
+        ResourceGroupSize,
         BTreeMap<
             <Self::Txn as Transaction>::Tag,
             (
@@ -166,7 +167,7 @@ pub trait TransactionOutput: Send + Sync + Debug {
     )> {
         self.resource_group_write_set()
             .into_iter()
-            .map(|(key, op, _)| (key, op))
+            .map(|(key, op, _, _)| (key, op))
             .collect()
     }
 

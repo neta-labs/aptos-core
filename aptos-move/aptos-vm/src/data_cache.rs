@@ -10,11 +10,11 @@ use crate::move_vm_ext::{
 use aptos_aggregator::{
     bounded_math::SignedU128,
     resolver::{TAggregatorV1View, TDelayedFieldView},
-    types::{DelayedFieldValue, DelayedFieldsSpeculativeError, PanicOr},
+    types::{DelayedFieldValue, DelayedFieldsSpeculativeError},
 };
 use aptos_table_natives::{TableHandle, TableResolver};
 use aptos_types::{
-    delayed_fields::PanicError,
+    error::{PanicError, PanicOr},
     on_chain_config::{ConfigStorage, Features, OnChainConfig},
     state_store::{
         errors::StateviewError,

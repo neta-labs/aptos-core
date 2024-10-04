@@ -20,7 +20,7 @@ use aptos_infallible::Mutex;
 use aptos_types::{
     block_executor::config::BlockExecutorConfig,
     contract_event::ContractEvent,
-    delayed_fields::PanicError,
+    error::PanicError,
     executable::ExecutableTestType,
     fee_statement::FeeStatement,
     state_store::{state_key::StateKey, state_value::StateValueMetadata, StateView, StateViewId},
@@ -31,7 +31,10 @@ use aptos_types::{
     write_set::WriteOp,
 };
 use aptos_vm_logging::{flush_speculative_logs, init_speculative_logs};
-use aptos_vm_types::{abstract_write_op::AbstractResourceWriteOp, output::VMOutput};
+use aptos_vm_types::{
+    abstract_write_op::AbstractResourceWriteOp, output::VMOutput,
+    resolver::ResourceGroupSize,
+};
 use move_core_types::{
     language_storage::StructTag,
     value::MoveTypeLayout,
@@ -118,6 +121,7 @@ impl BlockExecutorTransactionOutput for AptosTransactionOutput {
     ) -> Vec<(
         StateKey,
         WriteOp,
+        ResourceGroupSize,
         BTreeMap<StructTag, (WriteOp, Option<Arc<MoveTypeLayout>>)>,
     )> {
         self.vm_output
@@ -131,6 +135,9 @@ impl BlockExecutorTransactionOutput for AptosTransactionOutput {
                     Some((
                         key.clone(),
                         group_write.metadata_op().clone(),
+                        group_write
+                            .maybe_group_op_size()
+                            .unwrap_or(ResourceGroupSize::zero_combined()),
                         group_write
                             .inner_ops()
                             .iter()
@@ -438,7 +445,7 @@ impl BlockAptosVM {
             Err(BlockExecutionError::FatalBlockExecutorError(PanicError::CodeInvariantError(
                 err_msg,
             ))) => Err(VMStatus::Error {
-                status_code: StatusCode::DELAYED_MATERIALIZATION_CODE_INVARIANT_ERROR,
+                status_code: StatusCode::DELAYED_FIELD_OR_BLOCKSTM_CODE_INVARIANT_ERROR,
                 sub_status: None,
                 message: Some(err_msg),
             }),

@@ -72,7 +72,7 @@ impl ExecutorTask for AptosExecutorTask {
                         vm_status.message().cloned().unwrap_or_default(),
                     )
                 } else if vm_status.status_code()
-                    == StatusCode::DELAYED_MATERIALIZATION_CODE_INVARIANT_ERROR
+                    == StatusCode::DELAYED_FIELD_OR_BLOCKSTM_CODE_INVARIANT_ERROR
                 {
                     ExecutionStatus::DelayedFieldsCodeInvariantError(
                         vm_status.message().cloned().unwrap_or_default(),
@@ -99,7 +99,7 @@ impl ExecutorTask for AptosExecutorTask {
                         err.message().cloned().unwrap_or_default(),
                     )
                 } else if err.status_code()
-                    == StatusCode::DELAYED_MATERIALIZATION_CODE_INVARIANT_ERROR
+                    == StatusCode::DELAYED_FIELD_OR_BLOCKSTM_CODE_INVARIANT_ERROR
                 {
                     ExecutionStatus::DelayedFieldsCodeInvariantError(
                         err.message().cloned().unwrap_or_default(),

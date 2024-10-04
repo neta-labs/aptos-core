@@ -5,10 +5,7 @@
 #[cfg(feature = "testing")]
 use aptos_aggregator::resolver::TAggregatorV1View;
 #[cfg(feature = "testing")]
-use aptos_aggregator::{
-    bounded_math::SignedU128,
-    types::{DelayedFieldsSpeculativeError, PanicOr},
-};
+use aptos_aggregator::{bounded_math::SignedU128, types::DelayedFieldsSpeculativeError};
 #[cfg(feature = "testing")]
 use aptos_aggregator::{resolver::TDelayedFieldView, types::DelayedFieldValue};
 #[cfg(feature = "testing")]
@@ -23,7 +20,7 @@ use aptos_types::on_chain_config::{Features, TimedFeatures, TimedFeaturesBuilder
 #[cfg(feature = "testing")]
 use aptos_types::{
     chain_id::ChainId,
-    delayed_fields::PanicError,
+    error::{PanicError, PanicOr},
     state_store::{
         state_key::StateKey,
         state_value::{StateValue, StateValueMetadata},
