@@ -48,24 +48,12 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> TAptosModul
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> PartialVMResult<Option<StateValueMetadata>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.state_value_metadata().clone()));
         }
 
         self.read_module_storage(address, module_name, |read| {
                 read.as_versioned().map(|(_, entry)| entry.state_value_metadata().clone())
-            })
-            .map_err(|e| e.to_partial())
-    }
-
-    fn fetch_module_size_by_state_key(&self, key: &Self::Key) -> PartialVMResult<Option<usize>> {
-        if let Some(entry) = get_cached(key) {
-            return Ok(Some(entry.size_in_bytes()));
-        }
-
-        self.read_module_storage_by_key(key, |read| {
-                read.as_versioned().map(|(_, entry)| entry.bytes().len())
             })
             .map_err(|e| e.to_partial())
     }
@@ -167,8 +155,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<bool> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(_) = get_cached(&key) {
+        if get_cached(address, module_name).is_some() {
             return Ok(true);
         }
 
@@ -183,8 +170,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Bytes>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.bytes().clone()));
         }
 
@@ -199,8 +185,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<usize>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.size_in_bytes()));
         }
 
@@ -215,8 +200,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Vec<Metadata>>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.metadata().to_vec()));
         }
 
@@ -231,8 +215,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Arc<CompiledModule>>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.as_compiled_module()));
         }
 
@@ -247,8 +230,7 @@ impl<'a, T: Transaction, S: TStateView<Key = T::Key>, X: Executable> ModuleStora
         address: &AccountAddress,
         module_name: &IdentStr,
     ) -> VMResult<Option<Arc<Module>>> {
-        let key = T::Key::from_address_and_module_name(address, module_name);
-        if let Some(entry) = get_cached(&key) {
+        if let Some(entry) = get_cached(address, module_name) {
             return Ok(Some(entry.try_as_verified_module().unwrap()));
         }
 

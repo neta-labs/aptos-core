@@ -17,9 +17,11 @@ use aptos_types::vm::modules::ModuleStorageEntry;
 use aptos_vm_types::module_and_script_storage::AsAptosCodeStorage;
 use move_core_types::account_address::AccountAddress;
 use move_core_types::ident_str;
+use move_core_types::identifier::IdentStr;
+use move_core_types::language_storage::ModuleId;
 use move_vm_runtime::{ModuleStorage, RuntimeEnvironment, WithRuntimeEnvironment};
 
-static MODULE_CACHE: OnceCell<Option<HashMap<StateKey, ModuleStorageEntry>>> = OnceCell::new();
+static MODULE_CACHE: OnceCell<Option<hashbrown::HashMap<ModuleId, ModuleStorageEntry>>> = OnceCell::new();
 
 pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment: &RuntimeEnvironment) {
     if MODULE_CACHE.get().is_some() {
@@ -107,14 +109,14 @@ pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment:
         ident_str!("code"),
     ];
 
-    let mut framework = HashMap::new();
+    let mut framework = hashbrown::HashMap::new();
     for module_name in ordered_module_names {
-        let state_key = StateKey::module(&AccountAddress::ONE, module_name);
-        let state_value = assert_ok!(state_view.get_state_value(&state_key));
+        let id = ModuleId::new(AccountAddress::ONE, module_name.to_owned());
+        let state_value = assert_ok!(state_view.get_state_value(&StateKey::module_id(&id)));
         let module = assert_ok!(module_storage.fetch_verified_module(&AccountAddress::ONE, module_name));
         if let (Some(state_value), Some(module)) = (state_value, module) {
             let entry = ModuleStorageEntry::from_state_value_and_verified_module(state_value, module);
-            framework.insert(state_key, entry);
+            framework.insert(id, entry);
         }
     }
 
@@ -123,9 +125,9 @@ pub fn initialize_module_cache(state_view: &impl StateView, runtime_environment:
     }
 }
 
-pub fn get_cached<K: ModulePath>(key: &K) -> Option<&'static ModuleStorageEntry> {
+pub fn get_cached(address: &AccountAddress, module_name: &IdentStr) -> Option<&'static ModuleStorageEntry> {
     if let Some(cache) = MODULE_CACHE.get() {
-        return cache.as_ref().unwrap().get(key.as_state_key());
+        return cache.as_ref().unwrap().get(&(address, module_name));
     }
     None
 }
