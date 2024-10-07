@@ -458,7 +458,7 @@ impl BatchProofQueue {
         return_non_full: bool,
         block_timestamp: Duration,
     ) -> (
-        Vec<(BatchInfo, Vec<SignedTransaction>)>,
+        Vec<(BatchInfo, Arc<Vec<SignedTransaction>>)>,
         PayloadTxnsSize,
         u64,
     ) {

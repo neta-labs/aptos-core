@@ -32,7 +32,6 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     ops::Deref,
     sync::Arc,
-    time::Duration,
 };
 use tokio::sync::oneshot;
 
@@ -57,7 +56,7 @@ pub trait TPayloadManager: Send + Sync {
     async fn get_transactions(
         &self,
         block: &Block,
-    ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)>;
+    ) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)>;
 }
 
 /// A payload manager that directly returns the transactions in a block's payload.
@@ -82,13 +81,13 @@ impl TPayloadManager for DirectMempoolPayloadManager {
     async fn get_transactions(
         &self,
         block: &Block,
-    ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+    ) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)> {
         let Some(payload) = block.payload() else {
             return Ok((Vec::new(), None));
         };
 
         match payload {
-            Payload::DirectMempool(txns) => Ok((vec![(txns.clone(), 0)], None)),
+            Payload::DirectMempool(txns) => Ok((vec![(Arc::new(txns.clone()), 0)], None)),
             _ => unreachable!(
                 "DirectMempoolPayloadManager: Unacceptable payload type {}. Epoch: {}, Round: {}, Block: {}",
                 payload,
@@ -130,7 +129,7 @@ impl QuorumStorePayloadManager {
     ) -> Vec<(
         HashValue,
         u64,
-        oneshot::Receiver<ExecutorResult<Vec<SignedTransaction>>>,
+        oneshot::Receiver<ExecutorResult<Arc<Vec<SignedTransaction>>>>,
     )> {
         let mut receivers = Vec::new();
         for (batch_info, responders) in batches {
@@ -370,15 +369,9 @@ impl TPayloadManager for QuorumStorePayloadManager {
     async fn get_transactions(
         &self,
         block: &Block,
-    ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+    ) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)> {
         info!(
             "get_transactions for block ({}, {}) started.",
-            block.epoch(),
-            block.round()
-        );
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-        info!(
-            "get_transactions for block ({}, {}) ended tokio::time::sleep.",
             block.epoch(),
             block.round()
         );
@@ -516,7 +509,7 @@ async fn get_transactions_for_observer(
     block: &Block,
     block_payloads: &Arc<Mutex<BTreeMap<(u64, Round), BlockPayloadStatus>>>,
     consensus_publisher: &Option<Arc<ConsensusPublisher>>,
-) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)> {
     // The data should already be available (as consensus observer will only ever
     // forward a block to the executor once the data has been received and verified).
     let block_payload = match block_payloads.lock().entry((block.epoch(), block.round())) {
@@ -564,7 +557,7 @@ async fn request_txns_from_quorum_store(
     batches_and_responders: Vec<(BatchInfo, Vec<PeerId>)>,
     timestamp: u64,
     batch_reader: Arc<dyn BatchReader>,
-) -> ExecutorResult<Vec<(Vec<SignedTransaction>, u64)>> {
+) -> ExecutorResult<Vec<(Arc<Vec<SignedTransaction>>, u64)>> {
     let mut vec_ret = Vec::new();
     let receivers = QuorumStorePayloadManager::request_transactions(
         batches_and_responders,
@@ -597,7 +590,7 @@ async fn process_payload_helper<T: TDataInfo>(
     batch_reader: Arc<dyn BatchReader>,
     block: &Block,
     ordered_authors: &[PeerId],
-) -> ExecutorResult<Vec<(Vec<SignedTransaction>, u64)>> {
+) -> ExecutorResult<Vec<(Arc<Vec<SignedTransaction>>, u64)>> {
     let (iteration, fut) = {
         let data_fut_guard = data_ptr.data_fut.lock();
         let data_fut = data_fut_guard.as_ref().expect("must be initialized");
@@ -642,8 +635,8 @@ async fn process_payload(
     batch_reader: Arc<dyn BatchReader>,
     block: &Block,
     ordered_authors: &[PeerId],
-    // TODO: replace this Vec<(Vec<>, u64>> with a struct BatchedTransactions
-) -> ExecutorResult<Vec<(Vec<SignedTransaction>, u64)>> {
+    // TODO: replace this Vec<(Arc<Vec<>>, u64>> with a struct BatchedTransactions
+) -> ExecutorResult<Vec<(Arc<Vec<SignedTransaction>>, u64)>> {
     let status = proof_with_data.status.lock().take();
     match status.expect("Should have been updated before.") {
         DataStatus::Cached(data) => {
@@ -774,7 +767,7 @@ impl TPayloadManager for ConsensusObserverPayloadManager {
     async fn get_transactions(
         &self,
         block: &Block,
-    ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+    ) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)> {
         return get_transactions_for_observer(block, &self.txns_pool, &self.consensus_publisher)
             .await;
     }

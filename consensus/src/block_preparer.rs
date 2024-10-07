@@ -44,7 +44,7 @@ impl BlockPreparer {
         &self,
         block: &Block,
         block_window: &OrderedBlockWindow,
-    ) -> ExecutorResult<(Vec<(Vec<SignedTransaction>, u64)>, Option<u64>)> {
+    ) -> ExecutorResult<(Vec<(Arc<Vec<SignedTransaction>>, u64)>, Option<u64>)> {
         let mut txns = vec![];
         let mut futures = FuturesOrdered::new();
         info!(
@@ -152,16 +152,20 @@ impl BlockPreparer {
             // stable sort to ensure batches with same gas are in the same order
             batched_txns.sort_by_key(|(_, gas)| Reverse(*gas));
 
-            let txns: Vec<_> = monitor!("filter_and_flatten_transactions", {
+            let txns: Vec<_> = monitor!(
+                "flatten_transactions",
                 batched_txns
                     .into_par_iter()
-                    .flat_map(|(txns, _)| {
-                        txns.into_par_iter()
-                            .with_min_len(32)
-                            .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
-                    })
+                    .map(|(txns, _)| txns.as_ref().clone())
+                    .flatten()
                     .collect()
-            });
+            );
+            let txns: Vec<_> = monitor!(
+                "filter_committed_transactions",
+                txns.into_iter()
+                    .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
+                    .collect()
+            );
             let filtered_txns = monitor!("filter_transactions", {
                 txn_filter.filter(block_id, block_timestamp_usecs, txns)
             });
