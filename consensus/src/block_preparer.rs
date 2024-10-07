@@ -58,12 +58,14 @@ impl BlockPreparer {
             .map(|b| b.block())
             .chain(std::iter::once(block))
         {
-            futures.push_back({ self.payload_manager.get_transactions(block) });
+            futures.push_back(self.payload_manager.get_transactions(block));
         }
         info!("get_transactions added all futures");
 
+        let mut idx = 0;
         let mut max_txns_from_block_to_execute = None;
         loop {
+            info!("get_transactions waiting for next: {}", idx);
             match futures.next().await {
                 // TODO: we are turning off the max txns from block to execute feature for now
                 Some(Ok((block_txns, _max_txns))) => {
@@ -75,6 +77,7 @@ impl BlockPreparer {
                 },
                 None => break,
             }
+            idx += 1;
         }
         info!(
             "get_transactions finished in block window for ({}, {})",

@@ -16,7 +16,6 @@ use aptos_logger::{info, sample, sample::SampleRate, warn};
 use aptos_types::{transaction::SignedTransaction, PeerId};
 use dashmap::DashSet;
 use rand::{prelude::SliceRandom, thread_rng};
-use rayon::prelude::*;
 use std::{
     cmp::Reverse,
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},

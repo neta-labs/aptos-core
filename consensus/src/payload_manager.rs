@@ -32,6 +32,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     ops::Deref,
     sync::Arc,
+    time::Duration,
 };
 use tokio::sync::oneshot;
 
@@ -375,6 +376,12 @@ impl TPayloadManager for QuorumStorePayloadManager {
             block.epoch(),
             block.round()
         );
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        info!(
+            "get_transactions for block ({}, {}) ended tokio::time::sleep.",
+            block.epoch(),
+            block.round()
+        );
         let Some(payload) = block.payload() else {
             info!(
                 "get_transactions for block ({}, {}) finished (empty).",
@@ -640,6 +647,11 @@ async fn process_payload(
     let status = proof_with_data.status.lock().take();
     match status.expect("Should have been updated before.") {
         DataStatus::Cached(data) => {
+            info!(
+                "get_transactions block ({},{}) data is cached.",
+                block.epoch(),
+                block.round()
+            );
             counters::QUORUM_BATCH_READY_COUNT.inc();
             proof_with_data
                 .status
@@ -649,6 +661,11 @@ async fn process_payload(
         },
         DataStatus::Requested(receivers) => {
             let _timer = counters::BATCH_WAIT_DURATION.start_timer();
+            info!(
+                "get_transactions block ({},{}) data is being requested.",
+                block.epoch(),
+                block.round()
+            );
             let mut vec_ret = Vec::new();
             if !receivers.is_empty() {
                 debug!(
