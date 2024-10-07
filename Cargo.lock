@@ -2871,7 +2871,6 @@ dependencies = [
 [[package]]
 name = "aptos-moving-average"
 version = "0.1.0"
-source = "git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=4801acae7aea30d7e96bbfbe5ec5b04056dfa4cf#4801acae7aea30d7e96bbfbe5ec5b04056dfa4cf"
 dependencies = [
  "chrono",
 ]
@@ -2879,7 +2878,7 @@ dependencies = [
 [[package]]
 name = "aptos-moving-average"
 version = "0.1.0"
-source = "git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=51a34901b40d7f75767ac907b4d2478104d6a515#51a34901b40d7f75767ac907b4d2478104d6a515"
+source = "git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=4801acae7aea30d7e96bbfbe5ec5b04056dfa4cf#4801acae7aea30d7e96bbfbe5ec5b04056dfa4cf"
 dependencies = [
  "chrono",
 ]
@@ -13408,14 +13407,13 @@ dependencies = [
 [[package]]
 name = "processor"
 version = "1.0.0"
-source = "git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=51a34901b40d7f75767ac907b4d2478104d6a515#51a34901b40d7f75767ac907b4d2478104d6a515"
 dependencies = [
  "ahash 0.8.11",
  "allocative",
  "allocative_derive",
  "anyhow",
  "aptos-indexer-processor-sdk",
- "aptos-moving-average 0.1.0 (git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=51a34901b40d7f75767ac907b4d2478104d6a515)",
+ "aptos-moving-average 0.1.0",
  "aptos-protos 1.3.1 (git+https://github.com/aptos-labs/aptos-core.git?rev=5c48aee129b5a141be2792ffa3d9bd0a1a61c9cb)",
  "async-trait",
  "bcs 0.1.4",
@@ -13489,9 +13487,9 @@ checksum = "8bccbff07d5ed689c4087d20d7307a52ab6141edeedf487c3876a55b86cf63df"
 
 [[package]]
 name = "prometheus"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
 dependencies = [
  "cfg-if",
  "fnv",
@@ -14014,9 +14012,9 @@ checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
 
 [[package]]
 name = "rayon"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4963ed1bc86e4f3ee217022bd855b297cef07fb9eac5dfa1f788b220b49b3bd"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
 dependencies = [
  "either",
  "rayon-core",
@@ -15212,7 +15210,6 @@ dependencies = [
 [[package]]
 name = "server-framework"
 version = "1.0.0"
-source = "git+https://github.com/aptos-labs/aptos-indexer-processors.git?rev=51a34901b40d7f75767ac907b4d2478104d6a515#51a34901b40d7f75767ac907b4d2478104d6a515"
 dependencies = [
  "anyhow",
  "aptos-system-utils 0.1.0 (git+https://github.com/aptos-labs/aptos-core.git?rev=202bdccff2b2d333a385ae86a4fcf23e89da9f62)",

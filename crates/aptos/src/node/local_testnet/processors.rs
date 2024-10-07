@@ -110,6 +110,9 @@ impl ProcessorManager {
                     query_retry_delay_ms: Default::default(),
                 })
             },
+            // ProcessorName::ParquetFungibleAssetActivitiesProcessor => {
+            //     bail!("TODO: Implement ParquetFungibleAssetActivitiesProcessor")
+            // },
             ProcessorName::TokenV2Processor => {
                 ProcessorConfig::TokenV2Processor(TokenV2ProcessorConfig {
                     query_retries: Default::default(),
