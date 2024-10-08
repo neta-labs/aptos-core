@@ -16,12 +16,16 @@ use aptos_crypto::HashValue;
 use aptos_types::{
     aggregate_signature::PartialSignatures,
     block_info::BlockInfo,
+    epoch_state::EpochState,
     ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
     validator_signer::ValidatorSigner,
     validator_verifier::{ValidatorConsensusInfo, ValidatorVerifier},
 };
 use move_core_types::account_address::AccountAddress;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::oneshot;
 
 #[derive(Clone)]
@@ -80,9 +84,11 @@ async fn test_batch_request_exists() {
     let batch_response = BatchResponse::Batch(batch.clone());
 
     let validator_signer = ValidatorSigner::random(None);
+    let verifier =
+        ValidatorVerifier::new_single(validator_signer.author(), validator_signer.public_key());
+    let epoch_state = Arc::new(EpochState::new(5, verifier));
     let (tx, mut rx) = tokio::sync::oneshot::channel();
     let batch_requester = BatchRequester::new(
-        1,
         AccountAddress::random(),
         1,
         2,
@@ -166,7 +172,7 @@ async fn test_batch_request_not_exists_not_expired() {
     // Batch has not expired yet
     let (ledger_info_with_signatures, validator_verifier) =
         create_ledger_info_with_timestamp(expiration - 1);
-
+    let epoch_state = Arc::new(EpochState::new(5, validator_verifier));
     let batch = Batch::new(
         BatchId::new_for_test(1),
         vec![],
@@ -178,7 +184,6 @@ async fn test_batch_request_not_exists_not_expired() {
     let (tx, mut rx) = tokio::sync::oneshot::channel();
     let batch_response = BatchResponse::NotFound(ledger_info_with_signatures);
     let batch_requester = BatchRequester::new(
-        1,
         AccountAddress::random(),
         1,
         2,
@@ -214,7 +219,7 @@ async fn test_batch_request_not_exists_expired() {
     // Batch has expired according to the ledger info that will be returned
     let (ledger_info_with_signatures, validator_verifier) =
         create_ledger_info_with_timestamp(expiration + 1);
-
+    let epoch_state = Arc::new(EpochState::new(1, validator_verifier));
     let batch = Batch::new(
         BatchId::new_for_test(1),
         vec![],
@@ -226,7 +231,6 @@ async fn test_batch_request_not_exists_expired() {
     let (tx, mut rx) = tokio::sync::oneshot::channel();
     let batch_response = BatchResponse::NotFound(ledger_info_with_signatures);
     let batch_requester = BatchRequester::new(
-        1,
         AccountAddress::random(),
         1,
         2,
