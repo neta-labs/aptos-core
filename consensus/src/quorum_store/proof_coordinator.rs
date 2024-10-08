@@ -30,8 +30,6 @@ use tokio::{
 
 #[derive(Debug)]
 pub(crate) enum ProofCoordinatorCommand {
-    // The verification status indicates whether the signed batch info message is already verified.
-    // If the message is not verified, the coordinator is exepected to verify the message.
     AppendSignature(SignedBatchInfoMsg),
     CommitNotification(Vec<BatchInfo>),
     Shutdown(TokioOneshot::Sender<()>),
@@ -76,19 +74,32 @@ impl IncrementalProofState {
             )));
         }
 
-        let signer = signed_batch_info.signer();
-        match validator_verifier.get_voting_power(&signer) {
+        if self.signatures.contains_key(&signed_batch_info.signer()) {
+            return Err(SignedBatchInfoError::DuplicatedSignature);
+        }
+
+        match validator_verifier.get_voting_power(&signed_batch_info.signer()) {
             Some(_voting_power) => {
-                self.signatures
-                    .insert(signer, signed_batch_info.signature_with_status().clone());
-                if signer == self.info.author() {
-                    self.self_voted = true;
+                let signer = signed_batch_info.signer();
+                if self
+                    .signatures
+                    .insert(signer, signed_batch_info.signature_with_status().clone())
+                    .is_none()
+                {
+                    if signer == self.info.author() {
+                        self.self_voted = true;
+                    }
+                } else {
+                    error!(
+                        "Author already in aggregated_signatures right after rechecking: {}",
+                        signer
+                    );
                 }
             },
             None => {
                 error!(
                     "Received signature from author not in validator set: {}",
-                    signer
+                    signed_batch_info.signer()
                 );
                 return Err(SignedBatchInfoError::InvalidAuthor);
             },
