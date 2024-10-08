@@ -14,13 +14,14 @@ use aptos_consensus_types::proof_of_store::{
 };
 use aptos_logger::prelude::*;
 use aptos_types::{
-    aggregate_signature::AggregateSignature, ledger_info::SignatureWithStatus, validator_verifier::ValidatorVerifier, PeerId
+    aggregate_signature::AggregateSignature, ledger_info::SignatureWithStatus,
+    validator_verifier::ValidatorVerifier, PeerId,
 };
 use std::{
-    collections::{hash_map::Entry, HashMap, BTreeMap},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
+    mem,
     sync::Arc,
     time::{Duration, Instant},
-    mem,
 };
 use tokio::{
     sync::{mpsc::Receiver, oneshot as TokioOneshot},
@@ -76,14 +77,10 @@ impl IncrementalProofState {
         }
 
         let signer = signed_batch_info.signer();
-        match validator_verifier
-            .get_voting_power(&signer)
-        {
+        match validator_verifier.get_voting_power(&signer) {
             Some(_voting_power) => {
-                self.signatures.insert(
-                    signer,
-                    signed_batch_info.signature_with_status().clone(),
-                );
+                self.signatures
+                    .insert(signer, signed_batch_info.signature_with_status().clone());
                 if signer == self.info.author() {
                     self.self_voted = true;
                 }
@@ -100,7 +97,11 @@ impl IncrementalProofState {
         Ok(())
     }
 
-    fn check_voting_power(&self, validator_verifier: &ValidatorVerifier, check_super_majority: bool) -> bool {
+    fn check_voting_power(
+        &self,
+        validator_verifier: &ValidatorVerifier,
+        check_super_majority: bool,
+    ) -> bool {
         validator_verifier
             .check_voting_power(self.signatures.keys(), check_super_majority)
             .is_ok()
@@ -111,7 +112,10 @@ impl IncrementalProofState {
         self.signatures = verifier.filter_invalid_signatures(self.batch_info(), signatures);
     }
 
-    fn try_aggregate(&self, validator_verifier: &ValidatorVerifier) -> Result<AggregateSignature, SignedBatchInfoError> {
+    fn try_aggregate(
+        &self,
+        validator_verifier: &ValidatorVerifier,
+    ) -> Result<AggregateSignature, SignedBatchInfoError> {
         if !self.check_voting_power(validator_verifier, true) {
             return Err(SignedBatchInfoError::LowVotingPower);
         }
@@ -120,7 +124,9 @@ impl IncrementalProofState {
             .signatures
             .iter()
             .map(|(voter, sig)| (voter, sig.signature()));
-        let aggregate_sig = validator_verifier.aggregate_signatures(all_signatures).map_err(|_| SignedBatchInfoError::UnableToAggregate)?;
+        let aggregate_sig = validator_verifier
+            .aggregate_signatures(all_signatures)
+            .map_err(|_| SignedBatchInfoError::UnableToAggregate)?;
         Ok(aggregate_sig)
     }
 
@@ -138,19 +144,13 @@ impl IncrementalProofState {
             Ok(_) => {
                 // We are not marking all the signatures as "verified" here, as two malicious
                 // voters can collude and create a valid aggregated signature.
-                Ok(ProofOfStore::new(
-                    self.batch_info().clone(),
-                    aggregated_sig,
-                ))
+                Ok(ProofOfStore::new(self.batch_info().clone(), aggregated_sig))
             },
             Err(_) => {
-                self.filter_invalid_signatures(&validator_verifier);
+                self.filter_invalid_signatures(validator_verifier);
 
                 let aggregated_sig = self.try_aggregate(validator_verifier)?;
-                Ok(ProofOfStore::new(
-                    self.batch_info().clone(),
-                    aggregated_sig,
-                ))
+                Ok(ProofOfStore::new(self.batch_info().clone(), aggregated_sig))
             },
         }
     }
@@ -273,7 +273,10 @@ impl ProofCoordinator {
         Ok(None)
     }
 
-    fn update_counters_on_expire(state: &IncrementalProofState, validator_verifier: &ValidatorVerifier) {
+    fn update_counters_on_expire(
+        state: &IncrementalProofState,
+        validator_verifier: &ValidatorVerifier,
+    ) {
         // Count late votes separately
         if !state.completed && !state.self_voted {
             counters::BATCH_RECEIVED_LATE_REPLIES_COUNT.inc_by(state.voter_count());

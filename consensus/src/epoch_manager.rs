@@ -684,14 +684,16 @@ impl<P: OnChainConfigProvider> EpochManager<P> {
         let mut quorum_store_builder = if self.quorum_store_enabled {
             info!("Building QuorumStore");
             QuorumStoreBuilder::QuorumStore(InnerBuilder::new(
-                epoch_state.clone(),
+                self.epoch(),
                 self.author,
+                epoch_state.verifier.len() as u64,
                 quorum_store_config,
                 consensus_to_quorum_store_rx,
                 self.quorum_store_to_mempool_sender.clone(),
                 self.config.mempool_txn_pull_timeout_ms,
                 self.storage.aptos_db().clone(),
                 network_sender,
+                epoch_state.verifier.clone(),
                 self.proof_cache.clone(),
                 self.config.safety_rules.backend.clone(),
                 self.quorum_store_storage.clone(),

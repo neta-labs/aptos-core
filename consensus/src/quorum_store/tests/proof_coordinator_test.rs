@@ -14,8 +14,7 @@ use aptos_consensus_types::proof_of_store::{BatchId, SignedBatchInfo, SignedBatc
 use aptos_crypto::HashValue;
 use aptos_executor_types::ExecutorResult;
 use aptos_types::{
-    transaction::SignedTransaction,
-    validator_verifier::random_validator_verifier, PeerId,
+    transaction::SignedTransaction, validator_verifier::random_validator_verifier, PeerId,
 };
 use mini_moka::sync::Cache;
 use std::sync::Arc;
@@ -87,9 +86,7 @@ async fn test_proof_coordinator_basic() {
         msg => panic!("Expected LocalProof but received: {:?}", msg),
     };
     // check normal path
-    assert!(proof_msg
-        .verify(100, &verifier, &proof_cache)
-        .is_ok());
+    assert!(proof_msg.verify(100, &verifier, &proof_cache).is_ok());
     let proofs = proof_msg.take();
     assert_eq!(proofs[0].digest(), digest);
 }
@@ -114,11 +111,7 @@ async fn test_proof_coordinator_with_unverified_signatures() {
     let (proof_coordinator_tx, proof_coordinator_rx) = channel(100);
     let (tx, mut rx) = channel(100);
     let network_sender = MockQuorumStoreSender::new(tx);
-    tokio::spawn(proof_coordinator.start(
-        proof_coordinator_rx,
-        network_sender,
-        verifier.clone(),
-    ));
+    tokio::spawn(proof_coordinator.start(proof_coordinator_rx, network_sender, verifier.clone()));
 
     let batch_author = signers[0].author();
     for batch_index in 1..10 {

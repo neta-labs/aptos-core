@@ -11,7 +11,7 @@ use crate::{
 };
 use aptos_channels::aptos_channel;
 use aptos_logger::prelude::*;
-use aptos_types::{ledger_info::VerificationStatus, PeerId};
+use aptos_types::PeerId;
 use futures::StreamExt;
 use tokio::sync::mpsc::Sender;
 
@@ -57,29 +57,16 @@ impl NetworkListener {
                         counters::QUORUM_STORE_MSG_COUNT
                             .with_label_values(&["NetworkListener::signedbatchinfo"])
                             .inc();
-                        let cmd = ProofCoordinatorCommand::AppendSignature((
-                            *signed_batch_infos,
-                            VerificationStatus::Verified,
-                        ));
-                        self.proof_coordinator_tx
-                            .send(cmd)
-                            .await
-                            .expect("Could not send signed_batch_info to proof_coordinator");
-                    },
-                    VerifiedEvent::UnverifiedSignedBatchInfo(signed_batch_infos) => {
-                        counters::QUORUM_STORE_MSG_COUNT
-                            .with_label_values(&["NetworkListener::signedbatchinfo"])
-                            .inc();
-                        let cmd = ProofCoordinatorCommand::AppendSignature((
-                            *signed_batch_infos,
-                            VerificationStatus::Unverified,
-                        ));
+                        let cmd = ProofCoordinatorCommand::AppendSignature(*signed_batch_infos);
                         self.proof_coordinator_tx
                             .send(cmd)
                             .await
                             .expect("Could not send signed_batch_info to proof_coordinator");
                     },
                     VerifiedEvent::BatchMsg(batch_msg) => {
+                        counters::QUORUM_STORE_MSG_COUNT
+                            .with_label_values(&["NetworkListener::batchmsg"])
+                            .inc();
                         let author = batch_msg.author();
                         let batches = batch_msg.take();
                         counters::RECEIVED_BATCH_MSG_COUNT.inc();
@@ -110,7 +97,7 @@ impl NetworkListener {
                     _ => {
                         unreachable!()
                     },
-                }
+                };
             });
         }
     }
