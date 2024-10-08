@@ -88,7 +88,7 @@ module 0x42::VerifyVector {
     spec verify_singleton {
         aborts_if false;
         ensures len(result) == 1;
-        ensures result[0] == e;
+        ensures result == vector[e];
     }
 
     // Reverses the order of the elements in the vector in place.
@@ -408,5 +408,22 @@ module 0x42::VerifyVector {
         ensures len(v) == len(old(v)) - 1;
         ensures v == old(update(v,i,v[len(v)-1])[0..len(v)-1]);
         ensures old(v[i]) == result;
+    }
+
+    fun vector_operator_in_function<Element>(e1: Element, e2: Element, e3: Element): vector<Element> {
+        vector[e1, e2, e3]
+    }
+
+    fun spec_with_vector_operator<Element>(e1: Element, e2: Element, e3: Element): (vector<Element>, vector<Element>) {
+        let v = vector::empty();
+        let v1 = vector::empty();
+        vector::push_back(&mut v, e1);
+        vector::push_back(&mut v, e2);
+        vector::push_back(&mut v, e3);
+        (v, v1)
+    }
+    spec spec_with_vector_operator {
+        ensures result_2 == vector[];
+        ensures result_1 == vector_operator_in_function(e1, e2, e3);
     }
 }

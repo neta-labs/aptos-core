@@ -973,6 +973,21 @@ impl<'env> SpecTranslator<'env> {
                 // Skip freeze operation
                 self.translate_exp(&args[0])
             },
+            Operation::Vector if args.is_empty() => {
+                self.translate_primitive_inst_call(node_id, "$EmptyVec", args)
+            },
+            Operation::Vector if args.len() == 1 => self.translate_primitive_call("MakeVec1", args),
+            Operation::Vector => {
+                let mut count = 0;
+                for arg in &args[0..args.len() - 1] {
+                    emit!(self.writer, "ConcatVec(");
+                    self.translate_call(node_id, oper, &[arg.clone()]);
+                    emit!(self.writer, ",");
+                    count += 1;
+                }
+                self.translate_call(node_id, oper, &[args[args.len() - 1].clone()]);
+                emit!(self.writer, &")".repeat(count));
+            },
             Operation::MoveFunction(_, _)
             | Operation::BorrowGlobal(_)
             | Operation::Borrow(..)
@@ -980,7 +995,6 @@ impl<'env> SpecTranslator<'env> {
             | Operation::MoveTo
             | Operation::MoveFrom
             | Operation::Abort
-            | Operation::Vector
             | Operation::Old => {
                 panic!("operation unexpected: {}", oper.display(self.env, node_id))
             },
