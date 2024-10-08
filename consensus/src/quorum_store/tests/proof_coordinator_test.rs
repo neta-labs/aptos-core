@@ -14,7 +14,7 @@ use aptos_consensus_types::proof_of_store::{BatchId, SignedBatchInfo, SignedBatc
 use aptos_crypto::HashValue;
 use aptos_executor_types::ExecutorResult;
 use aptos_types::{
-    epoch_state::EpochState, ledger_info::VerificationStatus, transaction::SignedTransaction,
+    transaction::SignedTransaction,
     validator_verifier::random_validator_verifier, PeerId,
 };
 use mini_moka::sync::Cache;
@@ -48,7 +48,7 @@ impl BatchReader for MockBatchReader {
 async fn test_proof_coordinator_basic() {
     aptos_logger::Logger::init_for_testing();
     let (signers, verifier) = random_validator_verifier(4, None, true);
-    let epoch_state = Arc::new(EpochState::new(5, verifier));
+    let verifier = Arc::new(verifier);
     let (tx, _rx) = channel(100);
     let proof_cache = Cache::builder().build();
     let proof_coordinator = ProofCoordinator::new(
@@ -64,7 +64,6 @@ async fn test_proof_coordinator_basic() {
     let (proof_coordinator_tx, proof_coordinator_rx) = channel(100);
     let (tx, mut rx) = channel(100);
     let network_sender = MockQuorumStoreSender::new(tx);
-    let verifier = Arc::new(verifier);
     tokio::spawn(proof_coordinator.start(proof_coordinator_rx, network_sender, verifier.clone()));
 
     let batch_author = signers[0].author();
@@ -76,10 +75,9 @@ async fn test_proof_coordinator_basic() {
     for signer in &signers {
         let signed_batch_info = SignedBatchInfo::new(batch.batch_info().clone(), signer).unwrap();
         assert!(proof_coordinator_tx
-            .send(ProofCoordinatorCommand::AppendSignature((
-                SignedBatchInfoMsg::new(vec![signed_batch_info]),
-                VerificationStatus::Verified,
-            )))
+            .send(ProofCoordinatorCommand::AppendSignature(
+                SignedBatchInfoMsg::new(vec![signed_batch_info])
+            ))
             .await
             .is_ok());
     }
@@ -90,7 +88,7 @@ async fn test_proof_coordinator_basic() {
     };
     // check normal path
     assert!(proof_msg
-        .verify(100, &epoch_state.verifier, &proof_cache)
+        .verify(100, &verifier, &proof_cache)
         .is_ok());
     let proofs = proof_msg.take();
     assert_eq!(proofs[0].digest(), digest);
@@ -100,7 +98,7 @@ async fn test_proof_coordinator_basic() {
 async fn test_proof_coordinator_with_unverified_signatures() {
     aptos_logger::Logger::init_for_testing();
     let (signers, verifier) = random_validator_verifier(10, Some(4), true);
-    let epoch_state = Arc::new(EpochState::new(10, verifier));
+    let verifier = Arc::new(verifier);
     let (tx, _rx) = channel(100);
     let proof_cache = Cache::builder().build();
     let proof_coordinator = ProofCoordinator::new(
@@ -119,7 +117,7 @@ async fn test_proof_coordinator_with_unverified_signatures() {
     tokio::spawn(proof_coordinator.start(
         proof_coordinator_rx,
         network_sender,
-        epoch_state.clone(),
+        verifier.clone(),
     ));
 
     let batch_author = signers[0].author();
@@ -135,20 +133,18 @@ async fn test_proof_coordinator_with_unverified_signatures() {
                     .expect("Failed to create SignedBatchInfo");
 
                 assert!(proof_coordinator_tx
-                    .send(ProofCoordinatorCommand::AppendSignature((
+                    .send(ProofCoordinatorCommand::AppendSignature(
                         SignedBatchInfoMsg::new(vec![signed_batch_info]),
-                        VerificationStatus::Unverified,
-                    )))
+                    ))
                     .await
                     .is_ok())
             } else {
                 let signed_batch_info =
                     SignedBatchInfo::dummy(batch.batch_info().clone(), signer.author());
                 assert!(proof_coordinator_tx
-                    .send(ProofCoordinatorCommand::AppendSignature((
+                    .send(ProofCoordinatorCommand::AppendSignature(
                         SignedBatchInfoMsg::new(vec![signed_batch_info]),
-                        VerificationStatus::Unverified,
-                    )))
+                    ))
                     .await
                     .is_ok());
             }
@@ -161,6 +157,6 @@ async fn test_proof_coordinator_with_unverified_signatures() {
 
         let proofs = proof_msg.take();
         assert_eq!(proofs[0].digest(), digest);
-        assert_eq!(epoch_state.verifier.pessimistic_verify_set().len(), 3);
+        assert_eq!(verifier.pessimistic_verify_set().len(), 3);
     }
 }
