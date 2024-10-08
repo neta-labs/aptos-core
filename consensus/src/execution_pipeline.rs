@@ -317,14 +317,6 @@ impl ExecutionPipeline {
                         .enumerate()
                     {
                         blocking_txns_writer.set_txn(idx as TxnIndex, txn);
-                        // if idx % 10 == 0 || idx < 10 {
-                        //     info!(
-                        //         "Execution: Shuffled and set txn {} in {} micros",
-                        //         idx,
-                        //         timer.elapsed().as_micros()
-                        //     );
-                        //
-                        // }
                     }
                 } else {
                     // No user transactions in the block.

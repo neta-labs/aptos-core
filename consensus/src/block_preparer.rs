@@ -15,7 +15,6 @@ use aptos_logger::info;
 use aptos_types::transaction::SignedTransaction;
 use fail::fail_point;
 use futures::{stream::FuturesOrdered, StreamExt};
-use rayon::prelude::*;
 use std::{cmp::Reverse, collections::HashSet, sync::Arc, time::Instant};
 
 pub struct BlockPreparer {
@@ -152,19 +151,21 @@ impl BlockPreparer {
             // stable sort to ensure batches with same gas are in the same order
             batched_txns.sort_by_key(|(_, gas)| Reverse(*gas));
 
-            let txns: Vec<_> = monitor!(
-                "flatten_transactions",
+            let batched_txns: Vec<Vec<_>> = monitor!(
+                "filter_committed_transactions",
                 batched_txns
-                    .into_par_iter()
-                    .map(|(txns, _)| txns.as_ref().clone())
-                    .flatten()
+                    .into_iter()
+                    .map(|(txns, _)| {
+                        txns.iter()
+                            .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
+                            .cloned()
+                            .collect()
+                    })
                     .collect()
             );
             let txns: Vec<_> = monitor!(
-                "filter_committed_transactions",
-                txns.into_iter()
-                    .filter(|txn| !committed_transactions.contains(&txn.committed_hash()))
-                    .collect()
+                "flatten_transactions",
+                batched_txns.into_iter().flatten().collect()
             );
             let filtered_txns = monitor!("filter_transactions", {
                 txn_filter.filter(block_id, block_timestamp_usecs, txns)
