@@ -13,7 +13,7 @@ use crate::{
 };
 use anyhow::bail;
 use aptos_consensus_types::proof_of_store::{BatchInfo, SignedBatchInfo};
-use aptos_crypto::{CryptoMaterialError, HashValue};
+use aptos_crypto::{bls12381, CryptoMaterialError, HashValue};
 use aptos_executor_types::{ExecutorError, ExecutorResult};
 use aptos_logger::prelude::*;
 use aptos_types::{transaction::SignedTransaction, validator_signer::ValidatorSigner, PeerId};
@@ -314,9 +314,10 @@ impl BatchStore {
         batch_info: BatchInfo,
     ) -> Result<SignedBatchInfo, CryptoMaterialError> {
         fail_point!("quorum_store::create_invalid_signed_batch_info", |_| {
-            Ok(SignedBatchInfo::dummy(
+            Ok(SignedBatchInfo::new_with_signature(
                 batch_info.clone(),
                 self.validator_signer.author(),
+                bls12381::Signature::dummy_signature(),
             ))
         });
         SignedBatchInfo::new(batch_info, &self.validator_signer)
