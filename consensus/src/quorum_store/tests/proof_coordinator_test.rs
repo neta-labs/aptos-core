@@ -47,7 +47,6 @@ impl BatchReader for MockBatchReader {
 async fn test_proof_coordinator_basic() {
     aptos_logger::Logger::init_for_testing();
     let (signers, verifier) = random_validator_verifier(4, None, true);
-    let verifier = Arc::new(verifier);
     let (tx, _rx) = channel(100);
     let proof_cache = Cache::builder().build();
     let proof_coordinator = ProofCoordinator::new(
@@ -63,6 +62,7 @@ async fn test_proof_coordinator_basic() {
     let (proof_coordinator_tx, proof_coordinator_rx) = channel(100);
     let (tx, mut rx) = channel(100);
     let network_sender = MockQuorumStoreSender::new(tx);
+    let verifier = Arc::new(verifier);
     tokio::spawn(proof_coordinator.start(proof_coordinator_rx, network_sender, verifier.clone()));
 
     let batch_author = signers[0].author();
@@ -91,6 +91,7 @@ async fn test_proof_coordinator_basic() {
     assert_eq!(proofs[0].digest(), digest);
 }
 
+// This is testing the bad path where some of the signatures in signed batch infos are bad.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_proof_coordinator_with_unverified_signatures() {
     aptos_logger::Logger::init_for_testing();
@@ -124,7 +125,6 @@ async fn test_proof_coordinator_with_unverified_signatures() {
             if signer_index > 2 {
                 let signed_batch_info = SignedBatchInfo::new(batch.batch_info().clone(), signer)
                     .expect("Failed to create SignedBatchInfo");
-
                 assert!(proof_coordinator_tx
                     .send(ProofCoordinatorCommand::AppendSignature(
                         SignedBatchInfoMsg::new(vec![signed_batch_info]),

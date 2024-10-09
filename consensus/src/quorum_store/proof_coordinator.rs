@@ -155,12 +155,14 @@ impl IncrementalProofState {
             Ok(_) => {
                 // We are not marking all the signatures as "verified" here, as two malicious
                 // voters can collude and create a valid aggregated signature.
+                self.completed = true;
                 Ok(ProofOfStore::new(self.batch_info().clone(), aggregated_sig))
             },
             Err(_) => {
                 self.filter_invalid_signatures(validator_verifier);
 
                 let aggregated_sig = self.try_aggregate(validator_verifier)?;
+                self.completed = true;
                 Ok(ProofOfStore::new(self.batch_info().clone(), aggregated_sig))
             },
         }

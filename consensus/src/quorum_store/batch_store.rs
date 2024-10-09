@@ -12,8 +12,8 @@ use crate::{
     },
 };
 use anyhow::bail;
-use aptos_consensus_types::proof_of_store::SignedBatchInfo;
-use aptos_crypto::HashValue;
+use aptos_consensus_types::proof_of_store::{BatchInfo, SignedBatchInfo};
+use aptos_crypto::{CryptoMaterialError, HashValue};
 use aptos_executor_types::{ExecutorError, ExecutorResult};
 use aptos_logger::prelude::*;
 use aptos_types::{transaction::SignedTransaction, validator_signer::ValidatorSigner, PeerId};
@@ -309,6 +309,19 @@ impl BatchStore {
         ret
     }
 
+    fn generate_signed_batch_info(
+        &self,
+        batch_info: BatchInfo,
+    ) -> Result<SignedBatchInfo, CryptoMaterialError> {
+        fail_point!("quorum_store::create_invalid_signed_batch_info", |_| {
+            Ok(SignedBatchInfo::dummy(
+                batch_info.clone(),
+                self.validator_signer.author(),
+            ))
+        });
+        SignedBatchInfo::new(batch_info, &self.validator_signer)
+    }
+
     fn persist_inner(&self, persist_request: PersistedValue) -> Option<SignedBatchInfo> {
         match self.save(&persist_request) {
             Ok(needs_db) => {
@@ -320,7 +333,7 @@ impl BatchStore {
                         .save_batch(persist_request)
                         .expect("Could not write to DB");
                 }
-                SignedBatchInfo::new(batch_info, &self.validator_signer).ok()
+                self.generate_signed_batch_info(batch_info).ok()
             },
 
             Err(e) => {
