@@ -186,9 +186,8 @@ mod tests {
             .unwrap()
             .into_inner();
         let txns = vec![txn];
-        let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(txns.len(), deduped_txns.len());
-        assert_eq!(txns, deduped_txns);
+        let deduped_txns = deduper.dedup(txns);
+        assert_eq!(1, deduped_txns.len());
     }
 
     #[test]
@@ -248,9 +247,11 @@ mod tests {
             .unwrap()
             .into_inner();
         let txns = block(vec![&txn_0a, &txn_0b]);
-        let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(txns.len(), deduped_txns.len());
-        assert_eq!(txns, deduped_txns);
+        let expected_len = txns.len();
+        let expected = txns.clone();
+        let deduped_txns = deduper.dedup(txns);
+        assert_eq!(expected_len, deduped_txns.len());
+        assert_eq!(expected, deduped_txns);
     }
 
     // The perf tests are simple micro-benchmarks and just output results without checking for regressions
@@ -263,7 +264,7 @@ mod tests {
         let start = Instant::now();
         let mut iterations = 0;
         loop {
-            deduper.dedup(txns.clone());
+            let _result = deduper.dedup(txns.clone());
             iterations += 1;
             if iterations % 100 == 0 && start.elapsed().as_millis() > 2000 {
                 break;
@@ -292,9 +293,11 @@ mod tests {
                     .into_inner()
             })
             .collect();
-        let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(txns.len(), deduped_txns.len());
-        assert_eq!(txns, deduped_txns);
+        let expected_len = txns.len();
+        let expected = txns.clone();
+        let deduped_txns = deduper.dedup(txns);
+        assert_eq!(expected_len, deduped_txns.len());
+        assert_eq!(expected, deduped_txns);
 
         measure_dedup_time(deduper, txns);
     }
@@ -312,8 +315,9 @@ mod tests {
             .take(PERF_TXN_PER_BLOCK)
             .collect();
         let expected = block(vec![&txn]);
+        let expected_len = expected.len();
         let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(expected.len(), deduped_txns.len());
+        assert_eq!(expected_len, deduped_txns.len());
         assert_eq!(expected, deduped_txns);
 
         measure_dedup_time(deduper, txns);
@@ -333,11 +337,13 @@ mod tests {
                     .into_inner()
             })
             .collect();
-        let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(txns.len(), deduped_txns.len());
-        assert_eq!(txns, deduped_txns);
+        let expected_len = txns.len();
+        let expected = txns.clone();
+        let deduped_txns = deduper.dedup(txns);
+        assert_eq!(expected_len, deduped_txns.len());
+        assert_eq!(expected, deduped_txns);
 
-        measure_dedup_time(deduper, txns);
+        measure_dedup_time(deduper, expected);
     }
 
     #[test]
@@ -354,8 +360,9 @@ mod tests {
             .take(PERF_TXN_PER_BLOCK)
             .collect();
         let expected = block(vec![&txn]);
+        let expected_len = expected.len();
         let deduped_txns = deduper.dedup(txns.clone());
-        assert_eq!(expected.len(), deduped_txns.len());
+        assert_eq!(expected_len, deduped_txns.len());
         assert_eq!(expected, deduped_txns);
 
         measure_dedup_time(deduper, txns);
