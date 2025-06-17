@@ -751,32 +751,32 @@ async fn test_multisig_smart_contract_deployment() {
         .await;
 
     // Create a simple test module
-    let module_source = r#"
-        module 0xa550c18::test_module {
+    let module_source = format!(r#"
+        module {}::test_module {{
             use std::signer;
             
-            struct Counter has key {
+            struct Counter has key {{
                 value: u64,
-            }
+            }}
             
-            public entry fun initialize(account: &signer) {
-                move_to(account, Counter { value: 0 });
-            }
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Counter {{ value: 0 }});
+            }}
             
-            public entry fun increment(account: &signer) acquires Counter {
+            public entry fun increment(account: &signer) acquires Counter {{
                 let counter = borrow_global_mut<Counter>(signer::address_of(account));
                 counter.value = counter.value + 1;
-            }
+            }}
             
             #[view]
-            public fun get_count(addr: address): u64 acquires Counter {
+            public fun get_count(addr: address): u64 acquires Counter {{
                 borrow_global<Counter>(addr).value
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
     // Build the package payload
-    let package_payload = aptos_stdlib::publish_module_source("test_module", module_source);
+    let package_payload = aptos_stdlib::publish_module_source("test_module", &module_source);
     let (metadata_serialized, code) = match package_payload {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
@@ -835,15 +835,15 @@ async fn test_multisig_smart_contract_deployment_with_rejection() {
         .await;
 
     // Create a simple test module
-    let module_source = r#"
-        module 0xa550c18::rejected_module {
-            struct Data has key {
+    let module_source = format!(r#"
+        module {}::rejected_module {{
+            struct Data has key {{
                 value: u64,
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
-    let package_payload = aptos_stdlib::publish_module_source("rejected_module", module_source);
+    let package_payload = aptos_stdlib::publish_module_source("rejected_module", &module_source);
     let (metadata_serialized, code) = match package_payload {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
@@ -903,31 +903,31 @@ async fn test_multisig_smart_contract_deployment_and_execution() {
         .await;
 
     // Deploy a counter module
-    let module_source = r#"
-        module 0xa550c18::counter {
+    let module_source = format!(r#"
+        module {}::counter {{
             use std::signer;
             
-            struct Counter has key {
+            struct Counter has key {{
                 value: u64,
-            }
+            }}
             
-            public entry fun initialize(account: &signer) {
-                move_to(account, Counter { value: 0 });
-            }
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Counter {{ value: 0 }});
+            }}
             
-            public entry fun increment(account: &signer) acquires Counter {
+            public entry fun increment(account: &signer) acquires Counter {{
                 let counter = borrow_global_mut<Counter>(signer::address_of(account));
                 counter.value = counter.value + 1;
-            }
+            }}
             
             #[view]
-            public fun get_count(addr: address): u64 acquires Counter {
+            public fun get_count(addr: address): u64 acquires Counter {{
                 borrow_global<Counter>(addr).value
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
-    let package_payload = aptos_stdlib::publish_module_source("counter", module_source);
+    let package_payload = aptos_stdlib::publish_module_source("counter", &module_source);
     let (metadata_serialized, code) = match package_payload {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
@@ -1024,33 +1024,33 @@ async fn test_multisig_smart_contract_deployment_insufficient_gas() {
         .await;
 
     // Create a large module that will require more gas
-    let module_source = r#"
-        module 0xa550c18::large_module {
+    let module_source = format!(r#"
+        module {}::large_module {{
             use std::signer;
             use std::vector;
             
-            struct LargeData has key {
+            struct LargeData has key {{
                 data: vector<u64>,
-            }
+            }}
             
-            public entry fun initialize(account: &signer) {
+            public entry fun initialize(account: &signer) {{
                 let data = vector::empty<u64>();
                 let i = 0;
-                while (i < 100) {
+                while (i < 100) {{
                     vector::push_back(&mut data, i);
                     i = i + 1;
-                };
-                move_to(account, LargeData { data });
-            }
+                }};
+                move_to(account, LargeData {{ data }});
+            }}
             
-            public entry fun add_data(account: &signer, value: u64) acquires LargeData {
+            public entry fun add_data(account: &signer, value: u64) acquires LargeData {{
                 let large_data = borrow_global_mut<LargeData>(signer::address_of(account));
                 vector::push_back(&mut large_data.data, value);
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
-    let package_payload = aptos_stdlib::publish_module_source("large_module", module_source);
+    let package_payload = aptos_stdlib::publish_module_source("large_module", &module_source);
     let (metadata_serialized, code) = match package_payload {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
@@ -1093,27 +1093,27 @@ async fn test_multisig_smart_contract_upgrade() {
         .await;
 
     // Deploy initial version of the module
-    let module_source_v1 = r#"
-        module 0xa550c18::upgradeable {
+    let module_source_v1 = format!(r#"
+        module {}::upgradeable {{
             use std::signer;
             
-            struct Data has key {
+            struct Data has key {{
                 version: u64,
                 value: u64,
-            }
+            }}
             
-            public entry fun initialize(account: &signer) {
-                move_to(account, Data { version: 1, value: 0 });
-            }
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Data {{ version: 1, value: 0 }});
+            }}
             
             #[view]
-            public fun get_version(addr: address): u64 acquires Data {
+            public fun get_version(addr: address): u64 acquires Data {{
                 borrow_global<Data>(addr).version
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
-    let package_payload_v1 = aptos_stdlib::publish_module_source("upgradeable", module_source_v1);
+    let package_payload_v1 = aptos_stdlib::publish_module_source("upgradeable", &module_source_v1);
     let (metadata_serialized_v1, code_v1) = match package_payload_v1 {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
@@ -1172,32 +1172,32 @@ async fn test_multisig_smart_contract_upgrade() {
     assert_eq!(view_response_v1[0], "1");
 
     // Now upgrade to version 2
-    let module_source_v2 = r#"
-        module 0xa550c18::upgradeable {
+    let module_source_v2 = format!(r#"
+        module {}::upgradeable {{
             use std::signer;
             
-            struct Data has key {
+            struct Data has key {{
                 version: u64,
                 value: u64,
-            }
+            }}
             
-            public entry fun initialize(account: &signer) {
-                move_to(account, Data { version: 2, value: 0 });
-            }
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Data {{ version: 2, value: 0 }});
+            }}
             
-            public entry fun upgrade_version(account: &signer) acquires Data {
+            public entry fun upgrade_version(account: &signer) acquires Data {{
                 let data = borrow_global_mut<Data>(signer::address_of(account));
                 data.version = 2;
-            }
+            }}
             
             #[view]
-            public fun get_version(addr: address): u64 acquires Data {
+            public fun get_version(addr: address): u64 acquires Data {{
                 borrow_global<Data>(addr).version
-            }
-        }
-    "#;
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
 
-    let package_payload_v2 = aptos_stdlib::publish_module_source("upgradeable", module_source_v2);
+    let package_payload_v2 = aptos_stdlib::publish_module_source("upgradeable", &module_source_v2);
     let (metadata_serialized_v2, code_v2) = match package_payload_v2 {
         aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
             let args = entry_func.args();
