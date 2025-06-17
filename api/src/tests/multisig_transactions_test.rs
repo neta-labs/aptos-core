@@ -738,6 +738,56 @@ fn construct_multisig_txn_transfer_payload(recipient: AccountAddress, amount: u6
     .unwrap()
 }
 
+fn construct_multisig_txn_module_publish_payload(
+    metadata: Vec<u8>,
+    code: Vec<Vec<u8>>,
+) -> Vec<u8> {
+    bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(CORE_CODE_ADDRESS, ident_str!("code").to_owned()),
+            ident_str!("publish_package_txn").to_owned(),
+            vec![],
+            serialize_values(&vec![
+                MoveValue::Vector(metadata.into_iter().map(MoveValue::U8).collect()),
+                MoveValue::Vector(
+                    code.into_iter()
+                        .map(|module_code| {
+                            MoveValue::Vector(module_code.into_iter().map(MoveValue::U8).collect())
+                        })
+                        .collect(),
+                ),
+            ]),
+        ),
+    ))
+    .unwrap()
+}
+
+fn construct_multisig_txn_resource_account_payload(
+    seed: Vec<u8>,
+    metadata: Vec<u8>,
+    code: Vec<Vec<u8>>,
+) -> Vec<u8> {
+    bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(CORE_CODE_ADDRESS, ident_str!("resource_account").to_owned()),
+            ident_str!("create_resource_account_and_publish_package").to_owned(),
+            vec![],
+            serialize_values(&vec![
+                MoveValue::Vector(seed.into_iter().map(MoveValue::U8).collect()),
+                MoveValue::Vector(metadata.into_iter().map(MoveValue::U8).collect()),
+                MoveValue::Vector(
+                    code.into_iter()
+                        .map(|module_code| {
+                            MoveValue::Vector(module_code.into_iter().map(MoveValue::U8).collect())
+                        })
+                        .collect(),
+                ),
+            ]),
+        ),
+    ))
+    .unwrap()
+}
+
 async fn assert_multisig_tx_executed(
     context: &mut TestContext,
     multisig_account: AccountAddress,
@@ -774,4 +824,325 @@ async fn assert_multisig_tx_execution_failed(
     assert_eq!("65542", event_data["execution_error"]["error_code"]);
     let expected_payload = format!("0x{}", hex::encode(payload));
     assert_eq!(expected_payload, event_data["transaction_payload"],);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_module_deployment() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            1000,
+        )
+        .await;
+
+    let named_addresses = vec![("test_module".to_string(), multisig_account)];
+    let payload = TestContext::build_package(
+        std::path::PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("src/tests/move/pack_simple"),
+        named_addresses,
+    );
+
+    let (metadata, code) = match payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata = bcs::from_bytes::<Vec<u8>>(&args[0]).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(&args[1]).unwrap();
+            (metadata, code)
+        }
+        _ => panic!("Expected entry function payload"),
+    };
+
+    let multisig_payload = construct_multisig_txn_module_publish_payload(metadata, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, multisig_payload, 1).await;
+
+    let modules = context
+        .get(&format!("/accounts/{}/modules", multisig_account))
+        .await;
+    assert!(!modules.as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_resource_account_creation() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            1000,
+        )
+        .await;
+
+    let seed = b"test_resource_account".to_vec();
+    let resource_address = aptos_types::account_address::create_resource_address(&multisig_account, &seed);
+
+    let named_addresses = vec![("test_module".to_string(), resource_address)];
+    let payload = TestContext::build_package(
+        std::path::PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("src/tests/move/pack_simple"),
+        named_addresses,
+    );
+
+    let (metadata, code) = match payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata = bcs::from_bytes::<Vec<u8>>(&args[0]).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(&args[1]).unwrap();
+            (metadata, code)
+        }
+        _ => panic!("Expected entry function payload"),
+    };
+
+    let multisig_payload = construct_multisig_txn_resource_account_payload(seed, metadata, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, multisig_payload, 1).await;
+
+    let resource_modules = context
+        .get(&format!("/accounts/{}/modules", resource_address))
+        .await;
+    assert!(!resource_modules.as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_module_upgrade() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            1000,
+        )
+        .await;
+
+    let named_addresses = vec![("test_module".to_string(), multisig_account)];
+    let initial_payload = TestContext::build_package(
+        std::path::PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("src/tests/move/pack_simple"),
+        named_addresses.clone(),
+    );
+
+    let (metadata, code) = match initial_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata = bcs::from_bytes::<Vec<u8>>(&args[0]).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(&args[1]).unwrap();
+            (metadata, code)
+        }
+        _ => panic!("Expected entry function payload"),
+    };
+
+    let initial_multisig_payload = construct_multisig_txn_module_publish_payload(metadata, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, initial_multisig_payload.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, initial_multisig_payload, 1).await;
+
+    let upgrade_payload = TestContext::build_package(
+        std::path::PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("src/tests/move/pack_simple"),
+        named_addresses,
+    );
+
+    let (upgrade_metadata, upgrade_code) = match upgrade_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata = bcs::from_bytes::<Vec<u8>>(&args[0]).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(&args[1]).unwrap();
+            (metadata, code)
+        }
+        _ => panic!("Expected entry function payload"),
+    };
+
+    let upgrade_multisig_payload = construct_multisig_txn_module_publish_payload(upgrade_metadata, upgrade_code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, upgrade_multisig_payload.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 2)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, upgrade_multisig_payload, 2).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_complex_entry_function() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            1000,
+        )
+        .await;
+
+    let multisig_payload = bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(CORE_CODE_ADDRESS, ident_str!("multisig_account").to_owned()),
+            ident_str!("add_owners").to_owned(),
+            vec![],
+            serialize_values(&vec![MoveValue::Vector(vec![
+                MoveValue::Address(owner_account_1.address()),
+            ])]),
+        ),
+    ))
+    .unwrap();
+
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, multisig_payload, 1).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_batch_transactions() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let recipient = context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            2000,
+        )
+        .await;
+
+    let transfer_payload_1 = construct_multisig_txn_transfer_payload(recipient.address(), 500);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, transfer_payload_1.clone())
+        .await;
+
+    let transfer_payload_2 = construct_multisig_txn_transfer_payload(recipient.address(), 300);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, transfer_payload_2.clone())
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 2)
+        .await;
+
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    assert_multisig_tx_executed(&mut context, multisig_account, transfer_payload_1, 1).await;
+    assert_multisig_tx_executed(&mut context, multisig_account, transfer_payload_2, 2).await;
+
+    assert_eq!(800, context.get_apt_balance(recipient.address()).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_module_deployment_simulation() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,
+            1000,
+        )
+        .await;
+
+    let named_addresses = vec![("test_module".to_string(), multisig_account)];
+    let payload = TestContext::build_package(
+        std::path::PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("src/tests/move/pack_simple"),
+        named_addresses,
+    );
+
+    let (metadata, code) = match payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata = bcs::from_bytes::<Vec<u8>>(&args[0]).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(&args[1]).unwrap();
+            (metadata, code)
+        }
+        _ => panic!("Expected entry function payload"),
+    };
+
+    let multisig_payload = construct_multisig_txn_module_publish_payload(metadata, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload)
+        .await;
+
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    let simulation_resp = context
+        .simulate_multisig_transaction(
+            owner_account_1,
+            multisig_account,
+            "0x1::code::publish_package_txn",
+            &[],
+            &["0x", "0x"],
+            200,
+        )
+        .await;
+
+    let simulation_resp = &simulation_resp.as_array().unwrap()[0];
+    assert!(simulation_resp["success"].as_bool().unwrap());
 }
