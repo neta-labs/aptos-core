@@ -3,6 +3,7 @@
 
 use super::new_test_context;
 use aptos_api_test_context::{current_function_name, TestContext};
+use aptos_cached_packages::aptos_stdlib;
 use aptos_types::{
     account_address::AccountAddress,
     transaction::{EntryFunction, MultisigTransactionPayload},
@@ -12,6 +13,7 @@ use move_core_types::{
     language_storage::{ModuleId, CORE_CODE_ADDRESS},
     value::{serialize_values, MoveValue},
 };
+use serde_json::json;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multisig_transaction_with_payload_succeeds() {
@@ -707,4 +709,549 @@ fn construct_multisig_txn_transfer_payload(recipient: AccountAddress, amount: u6
         ),
     ))
     .unwrap()
+}
+
+fn construct_multisig_txn_publish_package_payload(
+    metadata_serialized: Vec<u8>,
+    code: Vec<Vec<u8>>,
+) -> Vec<u8> {
+    bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(CORE_CODE_ADDRESS, ident_str!("code").to_owned()),
+            ident_str!("publish_package_txn").to_owned(),
+            vec![],
+            serialize_values(&vec![
+                MoveValue::vector_u8(metadata_serialized),
+                MoveValue::Vector(
+                    code.into_iter()
+                        .map(MoveValue::vector_u8)
+                        .collect::<Vec<_>>(),
+                ),
+            ]),
+        ),
+    ))
+    .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_smart_contract_deployment() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let owner_account_3 = &mut context.create_account().await;
+    
+    // Create a 2-of-3 multisig account
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address(), owner_account_3.address()],
+            2,    /* 2-of-3 */
+            10000, /* initial balance for gas */
+        )
+        .await;
+
+    // Create a simple test module
+    let module_source = format!(r#"
+        module {}::test_module {{
+            use std::signer;
+            
+            struct Counter has key {{
+                value: u64,
+            }}
+            
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Counter {{ value: 0 }});
+            }}
+            
+            public entry fun increment(account: &signer) acquires Counter {{
+                let counter = borrow_global_mut<Counter>(signer::address_of(account));
+                counter.value = counter.value + 1;
+            }}
+            
+            #[view]
+            public fun get_count(addr: address): u64 acquires Counter {{
+                borrow_global<Counter>(addr).value
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    // Build the package payload
+    let package_payload = aptos_stdlib::publish_module_source("test_module", &module_source);
+    let (metadata_serialized, code) = match package_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    // Create multisig transaction for smart contract deployment
+    let multisig_payload = construct_multisig_txn_publish_package_payload(metadata_serialized, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload.clone())
+        .await;
+
+    // Owner 2 approves the transaction
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    // Execute the multisig transaction to deploy the smart contract
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Verify the module was deployed by checking if it exists
+    let module_response = context
+        .get(&format!(
+            "/accounts/{}/module/{}",
+            multisig_account.to_hex_literal(),
+            "test_module"
+        ))
+        .await;
+    
+    // The module should exist and be accessible
+    assert!(module_response["bytecode"].is_string());
+    assert_eq!(module_response["abi"]["name"], "test_module");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_smart_contract_deployment_with_rejection() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let owner_account_3 = &mut context.create_account().await;
+    
+    // Create a 3-of-3 multisig account (all must approve)
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address(), owner_account_3.address()],
+            3,    /* 3-of-3 */
+            10000, /* initial balance for gas */
+        )
+        .await;
+
+    // Create a simple test module
+    let module_source = format!(r#"
+        module {}::rejected_module {{
+            struct Data has key {{
+                value: u64,
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    let package_payload = aptos_stdlib::publish_module_source("rejected_module", &module_source);
+    let (metadata_serialized, code) = match package_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    let multisig_payload = construct_multisig_txn_publish_package_payload(metadata_serialized, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload.clone())
+        .await;
+
+    // Owner 2 approves but owner 3 rejects
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+    context
+        .reject_multisig_transaction(owner_account_3, multisig_account, 1)
+        .await;
+
+    // Try to execute - should fail due to insufficient approvals (only 2 out of 3 required)
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 400)
+        .await;
+
+    // Verify the module was NOT deployed
+    let module_response = context
+        .expect_status_code(404)
+        .get(&format!(
+            "/accounts/{}/module/{}",
+            multisig_account.to_hex_literal(),
+            "rejected_module"
+        ))
+        .await;
+    
+    // Should get a 404 since the module doesn't exist
+    assert!(module_response["message"].as_str().unwrap().contains("not found"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_smart_contract_deployment_and_execution() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    
+    // Create a 2-of-2 multisig account
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,    /* 2-of-2 */
+            10000, /* initial balance for gas */
+        )
+        .await;
+
+    // Deploy a counter module
+    let module_source = format!(r#"
+        module {}::counter {{
+            use std::signer;
+            
+            struct Counter has key {{
+                value: u64,
+            }}
+            
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Counter {{ value: 0 }});
+            }}
+            
+            public entry fun increment(account: &signer) acquires Counter {{
+                let counter = borrow_global_mut<Counter>(signer::address_of(account));
+                counter.value = counter.value + 1;
+            }}
+            
+            #[view]
+            public fun get_count(addr: address): u64 acquires Counter {{
+                borrow_global<Counter>(addr).value
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    let package_payload = aptos_stdlib::publish_module_source("counter", &module_source);
+    let (metadata_serialized, code) = match package_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    // Deploy the contract via multisig
+    let deploy_payload = construct_multisig_txn_publish_package_payload(metadata_serialized, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, deploy_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Now create a multisig transaction to initialize the counter
+    let initialize_payload = bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(multisig_account, ident_str!("counter").to_owned()),
+            ident_str!("initialize").to_owned(),
+            vec![],
+            serialize_values(&vec![]),
+        ),
+    ))
+    .unwrap();
+
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, initialize_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 2)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Create a multisig transaction to increment the counter
+    let increment_payload = bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(multisig_account, ident_str!("counter").to_owned()),
+            ident_str!("increment").to_owned(),
+            vec![],
+            serialize_values(&vec![]),
+        ),
+    ))
+    .unwrap();
+
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, increment_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 3)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Verify the counter was incremented by calling the view function
+    let view_response = context
+        .post(
+            "/view",
+            json!({
+                "function": format!("{}::counter::get_count", multisig_account.to_hex_literal()),
+                "type_arguments": [],
+                "arguments": [multisig_account.to_hex_literal()]
+            }),
+        )
+        .await;
+    
+    assert_eq!(view_response[0], "1");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_smart_contract_deployment_insufficient_gas() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    
+    // Create a multisig account with very low balance (insufficient for deployment)
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address()],
+            2,    /* 2-of-2 */
+            10,   /* very low balance */
+        )
+        .await;
+
+    // Create a large module that will require more gas
+    let module_source = format!(r#"
+        module {}::large_module {{
+            use std::signer;
+            use std::vector;
+            
+            struct LargeData has key {{
+                data: vector<u64>,
+            }}
+            
+            public entry fun initialize(account: &signer) {{
+                let data = vector::empty<u64>();
+                let i = 0;
+                while (i < 100) {{
+                    vector::push_back(&mut data, i);
+                    i = i + 1;
+                }};
+                move_to(account, LargeData {{ data }});
+            }}
+            
+            public entry fun add_data(account: &signer, value: u64) acquires LargeData {{
+                let large_data = borrow_global_mut<LargeData>(signer::address_of(account));
+                vector::push_back(&mut large_data.data, value);
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    let package_payload = aptos_stdlib::publish_module_source("large_module", &module_source);
+    let (metadata_serialized, code) = match package_payload {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    let multisig_payload = construct_multisig_txn_publish_package_payload(metadata_serialized, code);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, multisig_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+
+    // Execution should fail due to insufficient balance to cover gas
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 400)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_multisig_smart_contract_upgrade() {
+    let mut context = new_test_context(current_function_name!());
+    let owner_account_1 = &mut context.create_account().await;
+    let owner_account_2 = &mut context.create_account().await;
+    let owner_account_3 = &mut context.create_account().await;
+    
+    // Create a 2-of-3 multisig account
+    let multisig_account = context
+        .create_multisig_account(
+            owner_account_1,
+            vec![owner_account_2.address(), owner_account_3.address()],
+            2,    /* 2-of-3 */
+            20000, /* higher balance for multiple deployments */
+        )
+        .await;
+
+    // Deploy initial version of the module
+    let module_source_v1 = format!(r#"
+        module {}::upgradeable {{
+            use std::signer;
+            
+            struct Data has key {{
+                version: u64,
+                value: u64,
+            }}
+            
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Data {{ version: 1, value: 0 }});
+            }}
+            
+            #[view]
+            public fun get_version(addr: address): u64 acquires Data {{
+                borrow_global<Data>(addr).version
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    let package_payload_v1 = aptos_stdlib::publish_module_source("upgradeable", &module_source_v1);
+    let (metadata_serialized_v1, code_v1) = match package_payload_v1 {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    // Deploy v1 via multisig
+    let deploy_payload_v1 = construct_multisig_txn_publish_package_payload(metadata_serialized_v1, code_v1);
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, deploy_payload_v1)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 1)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Initialize the module
+    let initialize_payload = bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(multisig_account, ident_str!("upgradeable").to_owned()),
+            ident_str!("initialize").to_owned(),
+            vec![],
+            serialize_values(&vec![]),
+        ),
+    ))
+    .unwrap();
+
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, initialize_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_3, multisig_account, 2)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Verify initial version
+    let view_response_v1 = context
+        .post(
+            "/view",
+            json!({
+                "function": format!("{}::upgradeable::get_version", multisig_account.to_hex_literal()),
+                "type_arguments": [],
+                "arguments": [multisig_account.to_hex_literal()]
+            }),
+        )
+        .await;
+    
+    assert_eq!(view_response_v1[0], "1");
+
+    // Now upgrade to version 2
+    let module_source_v2 = format!(r#"
+        module {}::upgradeable {{
+            use std::signer;
+            
+            struct Data has key {{
+                version: u64,
+                value: u64,
+            }}
+            
+            public entry fun initialize(account: &signer) {{
+                move_to(account, Data {{ version: 2, value: 0 }});
+            }}
+            
+            public entry fun upgrade_version(account: &signer) acquires Data {{
+                let data = borrow_global_mut<Data>(signer::address_of(account));
+                data.version = 2;
+            }}
+            
+            #[view]
+            public fun get_version(addr: address): u64 acquires Data {{
+                borrow_global<Data>(addr).version
+            }}
+        }}
+    "#, multisig_account.to_hex_literal());
+
+    let package_payload_v2 = aptos_stdlib::publish_module_source("upgradeable", &module_source_v2);
+    let (metadata_serialized_v2, code_v2) = match package_payload_v2 {
+        aptos_types::transaction::TransactionPayload::EntryFunction(entry_func) => {
+            let args = entry_func.args();
+            let metadata_serialized = bcs::from_bytes::<Vec<u8>>(args.get(0).unwrap()).unwrap();
+            let code = bcs::from_bytes::<Vec<Vec<u8>>>(args.get(1).unwrap()).unwrap();
+            (metadata_serialized, code)
+        }
+        _ => panic!("Expected EntryFunction payload"),
+    };
+
+    // Deploy v2 via multisig (this is an upgrade)
+    let deploy_payload_v2 = construct_multisig_txn_publish_package_payload(metadata_serialized_v2, code_v2);
+    context
+        .create_multisig_transaction(owner_account_2, multisig_account, deploy_payload_v2)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_3, multisig_account, 3)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_2, multisig_account, 202)
+        .await;
+
+    // Call the upgrade function
+    let upgrade_payload = bcs::to_bytes(&MultisigTransactionPayload::EntryFunction(
+        EntryFunction::new(
+            ModuleId::new(multisig_account, ident_str!("upgradeable").to_owned()),
+            ident_str!("upgrade_version").to_owned(),
+            vec![],
+            serialize_values(&vec![]),
+        ),
+    ))
+    .unwrap();
+
+    context
+        .create_multisig_transaction(owner_account_1, multisig_account, upgrade_payload)
+        .await;
+    context
+        .approve_multisig_transaction(owner_account_2, multisig_account, 4)
+        .await;
+    context
+        .execute_multisig_transaction(owner_account_1, multisig_account, 202)
+        .await;
+
+    // Verify the version was upgraded
+    let view_response_v2 = context
+        .post(
+            "/view",
+            json!({
+                "function": format!("{}::upgradeable::get_version", multisig_account.to_hex_literal()),
+                "type_arguments": [],
+                "arguments": [multisig_account.to_hex_literal()]
+            }),
+        )
+        .await;
+    
+    assert_eq!(view_response_v2[0], "2");
 }

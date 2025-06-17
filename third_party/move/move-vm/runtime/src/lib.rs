@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 #![deny(deprecated)]
+#![feature(trait_upcasting)]
 
 //! The core Move VM logic.
 
